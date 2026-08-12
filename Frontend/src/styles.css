@@ -1,0 +1,755 @@
+/* styles.css */
+/* Core Styling System for the Enterprise Intelligence Platform */
+
+:root {
+  /* Colors - Sleek Obsidian Dark Theme with Cyber Neon Accent Glows */
+  --bg-core: hsl(224, 25%, 6%);
+  --bg-sidebar: hsla(224, 25%, 10%, 0.85);
+  --bg-card: hsla(224, 25%, 12%, 0.7);
+  --bg-card-hover: hsla(224, 25%, 16%, 0.8);
+  --bg-input: hsla(224, 25%, 5%, 0.8);
+  
+  --color-primary: hsl(180, 100%, 45%); /* Neon Cyan */
+  --color-primary-glow: hsla(180, 100%, 45%, 0.2);
+  --color-secondary: hsl(265, 90%, 65%); /* Neon Indigo/Purple */
+  --color-secondary-glow: hsla(265, 90%, 65%, 0.2);
+  
+  --color-accent-teal: hsl(160, 90%, 45%);
+  --color-accent-blue: hsl(210, 100%, 55%);
+  
+  --text-primary: hsl(210, 40%, 98%); /* Cyber White */
+  --text-secondary: hsl(215, 20%, 68%); /* Steel Silver */
+  --text-muted: hsl(215, 14%, 48%);
+  
+  --border-subtle: hsla(210, 40%, 98%, 0.08);
+  --border-focus: hsla(180, 100%, 45%, 0.5);
+  
+  /* Status Colors */
+  --color-success: hsl(142, 76%, 45%);
+  --color-success-bg: hsla(142, 76%, 45%, 0.15);
+  --color-warning: hsl(41, 96%, 50%);
+  --color-warning-bg: hsla(41, 96%, 50%, 0.15);
+  --color-danger: hsl(354, 82%, 56%);
+  --color-danger-bg: hsla(354, 82%, 56%, 0.15);
+  
+  /* Gradients */
+  --grad-primary: linear-gradient(135deg, hsl(180, 100%, 45%) 0%, hsl(150, 100%, 45%) 100%);
+  --grad-secondary: linear-gradient(135deg, hsl(265, 90%, 65%) 0%, hsl(295, 85%, 60%) 100%);
+  --grad-cyber: linear-gradient(90deg, hsl(180, 100%, 45%) 0%, hsl(265, 90%, 65%) 100%);
+  --grad-dark: linear-gradient(180deg, hsla(224, 25%, 10%, 0.8) 0%, hsla(224, 25%, 5%, 0.9) 100%);
+  
+  /* Transitions */
+  --trans-fast: 0.15s ease;
+  --trans-normal: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  --trans-slow: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  
+  --font-family-display: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-family-body: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* ==========================================
+   Base resets and settings
+   ========================================== */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-core);
+  color: var(--text-primary);
+  font-family: var(--font-family-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  min-height: 100vh;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-family-display);
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-core);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-subtle);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-primary);
+}
+
+/* ==========================================
+   Layout Structures (Shell)
+   ========================================== */
+
+.app-container {
+  display: flex;
+  min-height: 100vh;
+  position: relative;
+  background-image: 
+    radial-gradient(circle at 10% 20%, hsla(180, 100%, 45%, 0.05) 0%, transparent 40%),
+    radial-gradient(circle at 80% 80%, hsla(265, 90%, 65%, 0.05) 0%, transparent 40%);
+  background-attachment: fixed;
+}
+
+.sidebar {
+  width: 260px;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border-subtle);
+  backdrop-filter: blur(20px);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  transition: width var(--trans-normal);
+}
+
+.sidebar-brand {
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.sidebar-logo {
+  width: 32px;
+  height: 32px;
+  background: var(--grad-primary);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-family: var(--font-family-display);
+  color: var(--bg-core);
+  box-shadow: 0 0 15px var(--color-primary-glow);
+}
+
+.brand-text {
+  font-family: var(--font-family-display);
+  font-weight: 700;
+  font-size: 1.15rem;
+  background: var(--grad-cyber);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.sidebar-nav {
+  list-style: none;
+  padding: 20px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.sidebar-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all var(--trans-fast);
+  border: 1px solid transparent;
+}
+
+.sidebar-nav-item:hover {
+  background: hsla(210, 40%, 98%, 0.04);
+  color: var(--text-primary);
+}
+
+.sidebar-nav-item.active {
+  background: var(--color-primary-glow);
+  color: var(--color-primary);
+  border-color: hsla(180, 100%, 45%, 0.15);
+  text-shadow: 0 0 8px var(--color-primary-glow);
+}
+
+.sidebar-footer {
+  padding: 16px;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.main-header {
+  height: 70px;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 32px;
+  background: hsla(224, 25%, 6%, 0.5);
+  backdrop-filter: blur(10px);
+  position: sticky;
+  top: 0;
+  z-index: 90;
+}
+
+.header-title-container h2 {
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.page-container {
+  padding: 32px;
+  animation: fadeIn var(--trans-slow);
+  flex: 1;
+}
+
+/* ==========================================
+   UI Components (Cards & Visuals)
+   ========================================== */
+
+.glass-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 24px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  transition: border-color var(--trans-normal), transform var(--trans-normal), background var(--trans-normal);
+}
+
+.glass-card.hoverable:hover {
+  border-color: hsla(180, 100%, 45%, 0.25);
+  background: var(--bg-card-hover);
+  transform: translateY(-2px);
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+.kpi-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.kpi-label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.kpi-value {
+  font-size: 2rem;
+  font-weight: 700;
+  font-family: var(--font-family-display);
+  background: linear-gradient(180deg, var(--text-primary) 0%, var(--text-secondary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.kpi-trend {
+  font-size: 0.8rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.trend-up {
+  color: var(--color-success);
+}
+
+.trend-down {
+  color: var(--color-danger);
+}
+
+/* ==========================================
+   Tables & Data Presentation
+   ========================================== */
+
+.table-container {
+  overflow-x: auto;
+  margin-top: 15px;
+}
+
+.cyber-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.cyber-table th {
+  padding: 14px 16px;
+  color: var(--text-secondary);
+  font-weight: 600;
+  border-bottom: 1px solid var(--border-subtle);
+  background: hsla(224, 25%, 8%, 0.5);
+  font-family: var(--font-family-display);
+  letter-spacing: 0.02em;
+}
+
+.cyber-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  transition: background-color var(--trans-fast);
+}
+
+.cyber-table tbody tr:hover td {
+  background: hsla(210, 40%, 98%, 0.02);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.badge-tech {
+  background: hsla(180, 100%, 45%, 0.12);
+  color: var(--color-primary);
+}
+
+.badge-retail {
+  background: hsla(265, 90%, 65%, 0.12);
+  color: var(--color-secondary);
+}
+
+.badge-success {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.badge-danger {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+/* ==========================================
+   Forms, Buttons & Interactive Elements
+   ========================================== */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--font-family-display);
+  font-weight: 600;
+  font-size: 0.9rem;
+  padding: 10px 18px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all var(--trans-fast);
+}
+
+.btn-primary {
+  background: var(--grad-primary);
+  color: var(--bg-core);
+  box-shadow: 0 4px 15px var(--color-primary-glow);
+}
+
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px hsla(180, 100%, 45%, 0.4);
+}
+
+.btn-secondary {
+  background: hsla(210, 40%, 98%, 0.05);
+  color: var(--text-primary);
+  border-color: var(--border-subtle);
+}
+
+.btn-secondary:hover {
+  background: hsla(210, 40%, 98%, 0.1);
+}
+
+.btn-danger {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+  border-color: hsla(354, 82%, 56%, 0.3);
+}
+
+.btn-danger:hover {
+  background: hsla(354, 82%, 56%, 0.25);
+}
+
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.input-group label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.input-cyber {
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: var(--text-primary);
+  font-family: var(--font-family-body);
+  font-size: 0.9rem;
+  transition: all var(--trans-fast);
+}
+
+.input-cyber:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 10px var(--color-primary-glow);
+}
+
+/* ==========================================
+   Unified Loop Ingestion Ticker
+   ========================================== */
+
+.ticker-banner {
+  background: var(--grad-cyber);
+  color: var(--bg-core);
+  padding: 8px 16px;
+  overflow: hidden;
+  position: relative;
+  font-weight: 600;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.ticker-pulse {
+  width: 8px;
+  height: 8px;
+  background: var(--bg-core);
+  border-radius: 50%;
+  animation: pulse 1s infinite alternate;
+}
+
+/* ==========================================
+   Chat Interface (AI Assistant Page/Widget)
+   ========================================== */
+
+.chat-container {
+  display: flex;
+  flex-direction: column;
+  height: 600px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+}
+
+.chat-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: hsla(224, 25%, 8%, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.chat-header-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.chat-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-success);
+  box-shadow: 0 0 8px var(--color-success);
+}
+
+.chat-messages {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: radial-gradient(circle at 50% 50%, hsla(224, 25%, 6%, 0.4) 0%, transparent 100%);
+}
+
+.chat-bubble {
+  max-width: 75%;
+  padding: 12px 16px;
+  border-radius: 12px;
+  line-height: 1.45;
+  font-size: 0.92rem;
+  position: relative;
+  animation: messageSlide 0.25s cubic-bezier(0.1, 0.8, 0.2, 1);
+}
+
+.chat-bubble-assistant {
+  background: hsla(210, 40%, 98%, 0.05);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+  align-self: flex-start;
+  border-bottom-left-radius: 2px;
+}
+
+.chat-bubble-user {
+  background: var(--grad-primary);
+  color: var(--bg-core);
+  align-self: flex-end;
+  border-bottom-right-radius: 2px;
+  font-weight: 500;
+  box-shadow: 0 4px 12px var(--color-primary-glow);
+}
+
+.chat-input-area {
+  padding: 16px;
+  border-top: 1px solid var(--border-subtle);
+  background: hsla(224, 25%, 8%, 0.6);
+  display: flex;
+  gap: 10px;
+}
+
+.chat-input {
+  flex: 1;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 12px 16px;
+  color: var(--text-primary);
+  font-family: var(--font-family-body);
+  transition: all var(--trans-fast);
+}
+
+.chat-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 8px var(--color-primary-glow);
+}
+
+.quick-replies {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 0 20px 10px;
+}
+
+.quick-reply-btn {
+  background: hsla(210, 40%, 98%, 0.03);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  padding: 6px 12px;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all var(--trans-fast);
+}
+
+.quick-reply-btn:hover {
+  background: var(--color-primary-glow);
+  color: var(--color-primary);
+  border-color: hsla(180, 100%, 45%, 0.25);
+}
+
+/* ==========================================
+   Floating Assistant Widget
+   ========================================== */
+
+.floating-widget-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.floating-widget-trigger {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--grad-primary);
+  color: var(--bg-core);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 8px 30px var(--color-primary-glow);
+  transition: all var(--trans-normal);
+  border: none;
+}
+
+.floating-widget-trigger:hover {
+  transform: scale(1.05) rotate(5deg);
+  box-shadow: 0 12px 35px hsla(180, 100%, 45%, 0.5);
+}
+
+.floating-widget-panel {
+  width: 380px;
+  height: 480px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  animation: panelOpen 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+  transform-origin: bottom right;
+}
+
+/* ==========================================
+   Custom SVG Charts Container & Interactive Tools
+   ========================================== */
+
+.chart-wrapper {
+  margin-top: 15px;
+  position: relative;
+  width: 100%;
+}
+
+.chart-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.chart-tooltip {
+  position: absolute;
+  background: hsla(224, 25%, 8%, 0.95);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  pointer-events: none;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+  z-index: 10;
+}
+
+/* LookAheadValidator Scrub Tool */
+.scrub-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.slider-cyber {
+  width: 100%;
+  -webkit-appearance: none;
+  background: var(--border-subtle);
+  height: 6px;
+  border-radius: 3px;
+  outline: none;
+}
+
+.slider-cyber::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  cursor: pointer;
+  box-shadow: 0 0 8px var(--color-primary);
+  transition: transform var(--trans-fast);
+}
+
+.slider-cyber::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.validator-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 20px;
+  margin-top: 20px;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse {
+  from { transform: scale(0.95); opacity: 0.8; }
+  to { transform: scale(1.05); opacity: 1; }
+}
+
+@keyframes messageSlide {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes panelOpen {
+  from { opacity: 0; transform: scale(0.8) translate(20px, 20px); }
+  to { opacity: 1; transform: scale(1) translate(0, 0); }
+}
+
+/* Responsive Overrides */
+@media (max-width: 900px) {
+  .app-container {
+    flex-direction: column;
+  }
+  .sidebar {
+    width: 100%;
+    height: auto;
+    position: relative;
+  }
+  .main-content {
+    height: auto;
+  }
+  .validator-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -794,6 +794,45 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--text-secondary);
 }
 
+/* Developer report */
+.dev-report { display: flex; flex-direction: column; gap: 20px; }
+.dev-report-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.dev-report-header h3 { font-size: 1.5rem; margin-top: 5px; }
+.dev-report-header p, .report-muted { color: var(--text-secondary); font-size: 0.82rem; line-height: 1.5; margin-top: 6px; }
+.eyebrow { color: var(--color-primary); display: flex; align-items: center; gap: 6px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
+.report-value-small { font-size: 1.45rem; }
+.dev-report-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.report-section-title { display: flex; align-items: center; gap: 9px; color: var(--color-primary); margin-bottom: 16px; }
+.report-section-title h4 { font-size: 1rem; color: var(--text-primary); }
+.architecture-flow { display: flex; align-items: stretch; gap: 10px; }
+.architecture-flow > div { flex: 1; padding: 12px; border: 1px solid var(--border-subtle); border-radius: 8px; background: hsla(210, 40%, 98%, .02); }
+.architecture-flow strong, .architecture-flow span { display: block; }
+.architecture-flow span { color: var(--text-secondary); font-size: .72rem; margin-top: 5px; line-height: 1.35; }
+.architecture-flow .architecture-arrow { align-self: center; color: var(--color-primary); font-size: 1.1rem; margin: 0; }
+.report-details { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 14px; color: var(--text-secondary); font-size: .75rem; }
+.report-details span { display: inline-flex; align-items: center; gap: 5px; }
+.report-definition-list { display: flex; flex-direction: column; gap: 9px; }
+.report-definition-list div, .service-row { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 9px; font-size: .82rem; }
+.report-definition-list div:last-child, .service-row:last-child { border-bottom: 0; padding-bottom: 0; }
+.report-definition-list dt { color: var(--text-secondary); }
+.report-definition-list dd { margin: 0; text-align: right; text-transform: capitalize; }
+.service-list { display: flex; flex-direction: column; gap: 9px; }
+.service-row > span:first-child { display: flex; flex-direction: column; gap: 2px; }
+.service-row small { color: var(--text-muted); font-size: .7rem; }
+.quality-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.quality-grid span { padding: 11px; border-radius: 8px; background: hsla(210, 40%, 98%, .025); color: var(--text-secondary); font-size: .76rem; }
+.quality-grid strong { display: block; color: var(--text-primary); font-size: 1.2rem; margin-bottom: 3px; }
+.quality-result { margin-top: 14px; }
+.test-callout { display: flex; gap: 10px; padding: 12px; border: 1px solid hsla(180, 100%, 45%, .2); background: hsla(180, 100%, 45%, .04); border-radius: 8px; font-size: .82rem; }
+.test-callout strong, .test-callout span { display: block; }
+.test-callout span { color: var(--text-secondary); margin-top: 4px; }
+.test-callout code { color: var(--color-primary); }
+.dev-report-alert { display: flex; align-items: center; gap: 8px; color: var(--color-danger); background: var(--color-danger-bg); border: 1px solid hsla(354, 82%, 56%, .25); padding: 12px; border-radius: 8px; font-size: .85rem; }
+.report-footer { color: var(--text-muted); font-size: .75rem; text-align: right; }
+.spin-icon { animation: spin 1s linear infinite; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
 /* Animations */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(6px); }
@@ -834,9 +873,13 @@ h1, h2, h3, h4, h5, h6 {
   .assistant-page-grid {
     grid-template-columns: 1fr;
   }
+  .dev-report-grid { grid-template-columns: 1fr; }
   .assistant-console-card,
   .assistant-side-column {
     height: auto;
     overflow: visible;
   }
+  .dev-report-header { flex-direction: column; }
+  .architecture-flow { flex-direction: column; }
+  .architecture-flow .architecture-arrow { align-self: center; transform: rotate(90deg); }
 }

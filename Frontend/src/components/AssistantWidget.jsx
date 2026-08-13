@@ -1,9 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Bot, X, Send, ShoppingBag } from 'lucide-react';
 
-export default function AssistantWidget({ cart = [], addToCart, clearCart, checkoutCart, placeDirectPurchase, setActivePage }) {
+export default function AssistantWidget({ catalog = [], kpis = null, cart = [], addToCart, clearCart, checkoutCart, placeDirectPurchase, setActivePage }) {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [assistantMode, setAssistantMode] = useState('rule_engine');
+  const [llmEnabled, setLlmEnabled] = useState(false);
+  const [latestCards, setLatestCards] = useState({
+    recommendations: [],
+    cartPreview: [],
+    kpiSnapshot: null,
+    lowStockAlerts: []
+  });
   const [messages, setMessages] = useState([
     {
       sender: 'assistant',
@@ -12,6 +20,11 @@ export default function AssistantWidget({ cart = [], addToCart, clearCart, check
   ]);
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef(null);
+  const sessionIdRef = useRef(localStorage.getItem('assistantSessionId') || `session_${Math.random().toString(36).slice(2)}`);
+
+  useEffect(() => {
+    localStorage.setItem('assistantSessionId', sessionIdRef.current);
+  }, []);
 
   // Auto-scroll to bottom of chat
   useEffect(() => {
@@ -19,6 +32,19 @@ export default function AssistantWidget({ cart = [], addToCart, clearCart, check
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages, isTyping]);
+
+  useEffect(() => {
+    setLatestCards(prev => ({
+      ...prev,
+      cartPreview: cart.slice(0, 3),
+      kpiSnapshot: kpis,
+      lowStockAlerts: catalog.filter(p => p.inventory < 15).slice(0, 2)
+    }));
+  }, [cart, kpis, catalog]);
+
+  const formatCurrency = (value) => {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value || 0);
+  };
 
   const handleSend = async (textToSend) => {
     const text = textToSend || query;
@@ -34,11 +60,21 @@ export default function AssistantWidget({ cart = [], addToCart, clearCart, check
       const response = await fetch('/api/assistant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: text, cart })
+        body: JSON.stringify({ query: text, cart, sessionId: sessionIdRef.current, userId: 'demo-user' })
       });
 
       if (response.ok) {
         const data = await response.json();
+        if (data.meta) {
+          setAssistantMode(data.meta.mode || 'rule_engine');
+          setLlmEnabled(Boolean(data.meta.llmEnabled));
+        }
+        setLatestCards({
+          recommendations: Array.isArray(data.recommendations) ? data.recommendations.slice(0, 2) : [],
+          cartPreview: cart.slice(0, 3),
+          kpiSnapshot: kpis,
+          lowStockAlerts: catalog.filter(p => p.inventory < 15).slice(0, 2)
+        });
         
         setIsTyping(false);
         setMessages(prev => [...prev, { sender: 'assistant', text: data.textResponse }]);
@@ -97,7 +133,10 @@ export default function AssistantWidget({ cart = [], addToCart, clearCart, check
               <div className="chat-status"></div>
               <div>
                 <strong style={{ fontSize: '0.85rem' }}>Retail AI Assistant</strong>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Connected (Offline NLP)</div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
+                  {assistantMode === 'llm' ? 'Connected (LLM + Tools)' : 'Connected (Rule Engine)'}
+                  {!llmEnabled && ' - API key not set'}
+                </div>
               </div>
             </div>
             <button 
@@ -126,6 +165,56 @@ export default function AssistantWidget({ cart = [], addToCart, clearCart, check
               </div>
             )}
             <div ref={messagesEndRef} />
+
+            {(latestCards.recommendations.length > 0 || latestCards.cartPreview.length > 0 || latestCards.kpiSnapshot || latestCards.lowStockAlerts.length > 0) && (
+              <div className="assistant-widget-cards">
+                {latestCards.recommendations.length > 0 && (
+                  <div className="assistant-widget-card">
+                    <div className="assistant-widget-card-title">Recommendations</div>
+                    {latestCards.recommendations.map((rec) => (
+                      <div key={rec.id} className="assistant-widget-row">
+                        <span>{rec.name}</span>
+                        <strong>${rec.price?.toFixed(2)}</strong>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="assistant-widget-card">
+                  <div className="assistant-widget-card-title">Cart Preview</div>
+                  {latestCards.cartPreview.length === 0 ? (
+                    <div className="assistant-widget-empty">Empty</div>
+                  ) : (
+                    latestCards.cartPreview.map((item) => (
+                      <div key={item.product.id} className="assistant-widget-row">
+                        <span>{item.product.name} x{item.quantity}</span>
+                        <strong>{formatCurrency(item.product.price * item.quantity)}</strong>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {latestCards.kpiSnapshot && (
+                  <div className="assistant-widget-card">
+                    <div className="assistant-widget-card-title">KPI Snapshot</div>
+                    <div className="assistant-widget-row"><span>Revenue</span><strong>{formatCurrency(latestCards.kpiSnapshot.totalRevenue)}</strong></div>
+                    <div className="assistant-widget-row"><span>Orders</span><strong>{latestCards.kpiSnapshot.totalOrders}</strong></div>
+                  </div>
+                )}
+
+                {latestCards.lowStockAlerts.length > 0 && (
+                  <div className="assistant-widget-card">
+                    <div className="assistant-widget-card-title">Low-Stock Alerts</div>
+                    {latestCards.lowStockAlerts.map((product) => (
+                      <div key={product.id} className="assistant-widget-row">
+                        <span>{product.name}</span>
+                        <strong className="trend-down">{product.inventory}</strong>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Quick Actions Suggestions */}

@@ -24,6 +24,18 @@ let catalog = JSON.parse(JSON.stringify(INITIAL_CATALOG));
 let transactions = [];
 let stocksHistoricalData = [];
 
+// Assistant runtime state (in-memory sandbox)
+const assistantSessions = new Map();
+const assistantRateLimit = new Map();
+const assistantMetrics = {
+  totalRequests: 0,
+  blockedRequests: 0,
+  ruleEngineResponses: 0,
+  llmResponses: 0,
+  actionCalls: 0,
+  lastRequestAt: null
+};
+
 // ==========================================
 // 2. STOCK & TRANSACTION DATA GENERATOR (SEED)
 // ==========================================
@@ -114,6 +126,222 @@ function simulatePriceImpact(category, quantity) {
     stocksHistoricalData[lastIndex][category === 'Tech' ? 'TECH' : 'RETL'] = parseFloat(
       (stocksHistoricalData[lastIndex][category === 'Tech' ? 'TECH' : 'RETL'] + impact).toFixed(2)
     );
+  }
+}
+
+function getKpiSnapshot() {
+  const totalRevenue = transactions.reduce((sum, tx) => sum + tx.totalPrice, 0);
+  const totalOrders = transactions.length;
+  const techSales = transactions
+    .filter(t => t.category === 'Tech')
+    .reduce((sum, tx) => sum + tx.totalPrice, 0);
+  const retailSales = transactions
+    .filter(t => t.category === 'Retail')
+    .reduce((sum, tx) => sum + tx.totalPrice, 0);
+  const avgOrderValue = totalOrders > 0 ? parseFloat((totalRevenue / totalOrders).toFixed(2)) : 0;
+
+  return {
+    totalRevenue: parseFloat(totalRevenue.toFixed(2)),
+    totalOrders,
+    avgOrderValue,
+    techSales: parseFloat(techSales.toFixed(2)),
+    retailSales: parseFloat(retailSales.toFixed(2))
+  };
+}
+
+function enforceAssistantRateLimit(sessionId) {
+  const now = Date.now();
+  const windowMs = 60 * 1000;
+  const maxRequestsPerWindow = 20;
+  const bucket = assistantRateLimit.get(sessionId) || [];
+  const active = bucket.filter(ts => now - ts < windowMs);
+
+  if (active.length >= maxRequestsPerWindow) {
+    return false;
+  }
+
+  active.push(now);
+  assistantRateLimit.set(sessionId, active);
+  return true;
+}
+
+function validateAssistantInput(query) {
+  const sanitized = String(query || '').trim();
+  if (!sanitized) {
+    return { valid: false, reason: 'Please enter a query.' };
+  }
+
+  if (sanitized.length > 600) {
+    return { valid: false, reason: 'Query is too long. Please keep it under 600 characters.' };
+  }
+
+  const blockedPatterns = [
+    /ignore\s+all\s+previous\s+instructions/i,
+    /reveal\s+system\s+prompt/i,
+    /execute\s+arbitrary\s+code/i,
+    /drop\s+table/i
+  ];
+
+  for (const pattern of blockedPatterns) {
+    if (pattern.test(sanitized)) {
+      return { valid: false, reason: 'This request was blocked by assistant safety guardrails.' };
+    }
+  }
+
+  return { valid: true, sanitized };
+}
+
+function getSessionHistory(sessionId) {
+  if (!assistantSessions.has(sessionId)) {
+    assistantSessions.set(sessionId, []);
+  }
+  return assistantSessions.get(sessionId);
+}
+
+function appendSessionHistory(sessionId, role, content) {
+  const history = getSessionHistory(sessionId);
+  history.push({ role, content, at: new Date().toISOString() });
+  if (history.length > 10) {
+    history.splice(0, history.length - 10);
+  }
+}
+
+function buildRecommendations(cart = [], query = '') {
+  const lowerQuery = String(query || '').toLowerCase();
+  const cartIds = new Set(cart.map(item => item.product?.id));
+  const lowStock = catalog.filter(p => p.inventory < 20);
+
+  const catalogSortedByRating = [...catalog].sort((a, b) => b.rating - a.rating);
+  const bestRatedNotInCart = catalogSortedByRating.find(p => !cartIds.has(p.id));
+
+  const topSellerCounts = transactions.reduce((acc, tx) => {
+    acc[tx.productId] = (acc[tx.productId] || 0) + tx.quantity;
+    return acc;
+  }, {});
+
+  const topProductId = Object.keys(topSellerCounts).sort((a, b) => topSellerCounts[b] - topSellerCounts[a])[0];
+  const topProduct = topProductId ? catalog.find(p => p.id === topProductId) : null;
+  const lowStockPriority = lowStock.find(p => !cartIds.has(p.id));
+
+  const picks = [];
+
+  if (bestRatedNotInCart) {
+    picks.push({
+      id: bestRatedNotInCart.id,
+      name: bestRatedNotInCart.name,
+      reason: `Highly rated (${bestRatedNotInCart.rating}/5) and frequently recommended for first-time buyers.`,
+      price: bestRatedNotInCart.price,
+      category: bestRatedNotInCart.category
+    });
+  }
+
+  if (topProduct && !cartIds.has(topProduct.id)) {
+    picks.push({
+      id: topProduct.id,
+      name: topProduct.name,
+      reason: `Trending demand signal from transaction flow (${topSellerCounts[topProduct.id]} units sold).`,
+      price: topProduct.price,
+      category: topProduct.category
+    });
+  }
+
+  if (lowStockPriority) {
+    picks.push({
+      id: lowStockPriority.id,
+      name: lowStockPriority.name,
+      reason: `Inventory is tightening (${lowStockPriority.inventory} units left), useful for urgency-driven promotions.`,
+      price: lowStockPriority.price,
+      category: lowStockPriority.category
+    });
+  }
+
+  if (lowerQuery.includes('gift') || lowerQuery.includes('budget')) {
+    const affordable = catalog.find(p => p.price < 100 && !cartIds.has(p.id));
+    if (affordable) {
+      picks.unshift({
+        id: affordable.id,
+        name: affordable.name,
+        reason: 'Budget-friendly option selected from your query intent.',
+        price: affordable.price,
+        category: affordable.category
+      });
+    }
+  }
+
+  return picks.slice(0, 3);
+}
+
+async function tryLLMAssistantResponse(query, cart = [], sessionId = 'default-session') {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    return null;
+  }
+
+  const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+  const context = {
+    catalog: catalog.map(p => ({ id: p.id, name: p.name, category: p.category, price: p.price, inventory: p.inventory, rating: p.rating })),
+    kpis: getKpiSnapshot(),
+    recentTransactions: transactions.slice(0, 8),
+    cart: cart.map(item => ({ id: item.product?.id, name: item.product?.name, quantity: item.quantity, price: item.product?.price })),
+    sessionHistory: getSessionHistory(sessionId).slice(-6)
+  };
+
+  const systemPrompt = [
+    'You are an enterprise retail assistant inside a sandbox platform.',
+    'Return only JSON with shape: {"textResponse": string, "actions": array}.',
+    'Allowed actions: ADD_TO_CART, DIRECT_PURCHASE, CHECKOUT, CLEAR_CART, SHOW_KPIS, SHOW_CATALOG, SHOW_CART, SHOW_INVENTORY.',
+    'When using ADD_TO_CART or DIRECT_PURCHASE include fields: product {id,name,price,category,inventory}, quantity.',
+    'Never fabricate products. Use only provided context.'
+  ].join(' ');
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 7000);
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.2,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: systemPrompt },
+          {
+            role: 'user',
+            content: `Context: ${JSON.stringify(context)}\n\nUser query: ${query}`
+          }
+        ]
+      }),
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const payload = await response.json();
+    const content = payload?.choices?.[0]?.message?.content;
+    if (!content) {
+      return null;
+    }
+
+    const parsed = JSON.parse(content);
+    if (!parsed.textResponse || !Array.isArray(parsed.actions)) {
+      return null;
+    }
+
+    return {
+      textResponse: parsed.textResponse,
+      actions: parsed.actions
+    };
+  } catch (error) {
+    return null;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -351,8 +579,11 @@ function parseAssistantQuery(query, cart = []) {
     return { textResponse, actions };
   }
 
-  // Cart Status query
-  if (lower.match(/\b(cart|shopping cart|my items|show cart|what is in my cart)\b/)) {
+  // Cart Status query (exclude explicit add/buy intents)
+  if (
+    lower.match(/\b(cart|shopping cart|my items|show cart|what is in my cart)\b/) &&
+    !lower.match(/\b(add|buy)\b/)
+  ) {
     if (cart.length === 0) {
       textResponse = "Your shopping cart is currently empty. Try asking: *'Add Quantum Laptop Pro to my cart'*";
     } else {
@@ -416,6 +647,55 @@ function parseAssistantQuery(query, cart = []) {
       }
       return { textResponse, actions };
     }
+  }
+
+  // Recommendations / gift / budget intent
+  if (lower.match(/\b(recommend|suggest|gift|budget|under|below|cheap|best)\b/)) {
+    const budgetMatch = lower.match(/(?:under|below)\s*\$?\s*(\d+)/) || lower.match(/\$\s*(\d+)/);
+    const budget = budgetMatch ? parseFloat(budgetMatch[1]) : 150;
+
+    let categoryHint = null;
+    if (lower.match(/\b(tech|gadget|laptop|phone|headphones|developer|gamer)\b/)) {
+      categoryHint = 'Tech';
+    } else if (lower.match(/\b(office|retail|home|kitchen|shoes|bottle)\b/)) {
+      categoryHint = 'Retail';
+    }
+
+    let pool = catalog.filter(p => p.inventory > 0 && p.price <= budget);
+    if (categoryHint) {
+      const categoryOnly = pool.filter(p => p.category === categoryHint);
+      if (categoryOnly.length > 0) {
+        pool = categoryOnly;
+      }
+    }
+
+    const rankByValue = lower.match(/\b(cheap|budget|value)\b/);
+    const rankByBest = lower.match(/\b(best|top|high rated|high-rated)\b/);
+
+    const recommended = pool
+      .sort((a, b) => {
+        if (rankByValue && !rankByBest) {
+          return a.price - b.price || b.rating - a.rating;
+        }
+        return b.rating - a.rating || a.price - b.price;
+      })
+      .slice(0, 3);
+
+    if (recommended.length === 0) {
+      textResponse = `I could not find products under $${budget.toFixed(0)} right now. Try increasing your budget or ask me to show the full catalog.`;
+      actions.push({ type: 'SHOW_CATALOG' });
+      return { textResponse, actions };
+    }
+
+    const qualifier = categoryHint ? ` in ${categoryHint}` : '';
+    textResponse = `Great choice. Here are my recommendations${qualifier} under $${budget.toFixed(0)}:\n\n` +
+      recommended
+        .map((p, idx) => `${idx + 1}. **${p.name}** (${p.category}) - $${p.price.toFixed(2)} | Rating: ${p.rating}/5 | Stock: ${p.inventory}`)
+        .join('\n') +
+      `\n\nYou can say: *Add 1 ${recommended[0].name} to cart*.`;
+
+    actions.push({ type: 'SHOW_CATALOG' });
+    return { textResponse, actions };
   }
 
   // Fallback to General AI / Help
@@ -528,13 +808,7 @@ app.post('/api/transactions/checkout', (req, res) => {
 
 // KPIs API
 app.get('/api/kpis', (req, res) => {
-  const totalRevenue = transactions.reduce((sum, tx) => sum + tx.totalPrice, 0);
-  const totalOrders = transactions.length;
-  
-  const techSales = transactions.filter(t => t.category === 'Tech').reduce((sum, tx) => sum + tx.totalPrice, 0);
-  const retailSales = transactions.filter(t => t.category === 'Retail').reduce((sum, tx) => sum + tx.totalPrice, 0);
-
-  const avgOrderValue = totalOrders > 0 ? parseFloat((totalRevenue / totalOrders).toFixed(2)) : 0;
+  const kpis = getKpiSnapshot();
   
   // Tickers list with current values
   const lastIndex = stocksHistoricalData.length - 1;
@@ -542,12 +816,12 @@ app.get('/api/kpis', (req, res) => {
   const currentRetailStock = lastIndex >= 0 ? stocksHistoricalData[lastIndex].RETL : 80.00;
 
   res.json({
-    totalRevenue: parseFloat(totalRevenue.toFixed(2)),
-    totalOrders,
-    avgOrderValue,
+    totalRevenue: kpis.totalRevenue,
+    totalOrders: kpis.totalOrders,
+    avgOrderValue: kpis.avgOrderValue,
     categorySales: {
-      Tech: parseFloat(techSales.toFixed(2)),
-      Retail: parseFloat(retailSales.toFixed(2))
+      Tech: kpis.techSales,
+      Retail: kpis.retailSales
     },
     currentStocks: {
       TECH: currentTechStock,
@@ -578,14 +852,73 @@ app.get('/api/stocks', (req, res) => {
 });
 
 // Chatbot Parser API
-app.post('/api/assistant', (req, res) => {
-  const { query, cart } = req.body;
+app.post('/api/assistant', async (req, res) => {
+  const { query, cart, sessionId = 'default-session', userId = 'demo-user' } = req.body;
+  assistantMetrics.totalRequests += 1;
+  assistantMetrics.lastRequestAt = new Date().toISOString();
+
   if (!query) {
     return res.status(400).json({ error: 'Query is required' });
   }
 
-  const parseResult = parseAssistantQuery(query, cart || []);
-  res.json(parseResult);
+  if (!enforceAssistantRateLimit(sessionId)) {
+    assistantMetrics.blockedRequests += 1;
+    return res.status(429).json({
+      textResponse: 'Too many requests in a short period. Please wait a few seconds and try again.',
+      actions: [],
+      recommendations: [],
+      meta: { mode: 'rate_limited', sessionId, userId }
+    });
+  }
+
+  const validity = validateAssistantInput(query);
+  if (!validity.valid) {
+    assistantMetrics.blockedRequests += 1;
+    return res.status(400).json({
+      textResponse: validity.reason,
+      actions: [],
+      recommendations: buildRecommendations(cart || [], query),
+      meta: { mode: 'guardrail_blocked', sessionId, userId }
+    });
+  }
+
+  appendSessionHistory(sessionId, 'user', validity.sanitized);
+
+  const llmResult = await tryLLMAssistantResponse(validity.sanitized, cart || [], sessionId);
+  const parserFallbackResult = parseAssistantQuery(validity.sanitized, cart || []);
+  const selected = llmResult || parserFallbackResult;
+  const cleanTextResponse = String(selected.textResponse || '')
+    .replace(/\*\*/g, '')
+    .replace(/\*/g, '');
+
+  if (llmResult) {
+    assistantMetrics.llmResponses += 1;
+  } else {
+    assistantMetrics.ruleEngineResponses += 1;
+  }
+
+  assistantMetrics.actionCalls += selected.actions.length;
+  appendSessionHistory(sessionId, 'assistant', cleanTextResponse);
+
+  res.json({
+    ...selected,
+    textResponse: cleanTextResponse,
+    recommendations: buildRecommendations(cart || [], query),
+    meta: {
+      mode: llmResult ? 'llm' : 'rule_engine',
+      sessionId,
+      userId,
+      llmEnabled: Boolean(process.env.OPENAI_API_KEY)
+    }
+  });
+});
+
+app.get('/api/assistant/health', (req, res) => {
+  res.json({
+    ...assistantMetrics,
+    llmEnabled: Boolean(process.env.OPENAI_API_KEY),
+    activeSessions: assistantSessions.size
+  });
 });
 
 // Reset Sandbox API

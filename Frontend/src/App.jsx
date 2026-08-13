@@ -278,10 +278,7 @@ function App() {
               {activePage === 'Assistant' && (
                 <Assistant 
                   catalog={catalog} 
-<<<<<<< HEAD
                   kpis={kpis}
-=======
->>>>>>> kairavi
                   cart={cart}
                   addToCart={addToCart}
                   clearCart={clearCart}
@@ -301,11 +298,8 @@ function App() {
       {/* Floating Assistant Widget (visible on all pages except the Assistant page) */}
       {activePage !== 'Assistant' && (
         <AssistantWidget 
-<<<<<<< HEAD
           catalog={catalog}
           kpis={kpis}
-=======
->>>>>>> kairavi
           cart={cart}
           addToCart={addToCart}
           clearCart={clearCart}

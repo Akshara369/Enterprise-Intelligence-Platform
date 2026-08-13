@@ -18,6 +18,7 @@ import Backtesting from './pages/Backtesting.jsx';
 import DataMart from './pages/DataMart.jsx';
 import Assistant from './pages/Assistant.jsx';
 import DevReport from './pages/DevReport.jsx';
+import LoginPage from './auth/LoginPage.jsx';
 
 // Import Floating Widget
 import AssistantWidget from './components/AssistantWidget.jsx';
@@ -29,18 +30,34 @@ function App() {
   const [transactions, setTransactions] = useState([]);
   const [stocks, setStocks] = useState([]);
   const [kpis, setKpis] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem('eintel_is_logged_in') === 'true';
+  });
   
   const [apiStatus, setApiStatus] = useState(false);
   const [lastNotification, setLastNotification] = useState(null);
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState(() => {
-    if (typeof window === 'undefined') return 'admin';
-    return localStorage.getItem('eintel_username') || 'admin';
+    if (typeof window === 'undefined') return 'Guest';
+    return localStorage.getItem('eintel_username') || 'Guest';
   });
+
+  const handleLogin = (username) => {
+    const cleanUsername = username || 'Guest';
+    localStorage.setItem('eintel_username', cleanUsername);
+    localStorage.setItem('eintel_is_logged_in', 'true');
+    setCurrentUser(cleanUsername);
+    setIsAuthenticated(true);
+    setActivePage('Dashboard');
+  };
 
   const handleSignOut = () => {
     localStorage.removeItem('eintel_username');
+    localStorage.setItem('eintel_is_logged_in', 'false');
     setCurrentUser('Guest');
+    setIsAuthenticated(false);
+    setActivePage('Dashboard');
   };
 
   // Fetch all states from the server
@@ -159,6 +176,10 @@ function App() {
       console.error(e);
     }
   };
+
+  if (!isAuthenticated) {
+    return <LoginPage onLogin={handleLogin} />;
+  }
 
   return (
     <div className="app-container">

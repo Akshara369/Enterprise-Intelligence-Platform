@@ -10,7 +10,7 @@ export default function LoginPage({ onLogin }) {
             <div className="logo-badge-large">E</div>
             <div>
               <div className="brand-title">E-Intel Platform</div>
-              <div className="brand-sub">Enterprise Intelligence • Retail + Trading</div>
+              <div className="brand-sub">Enterprise Intelligence - Retail + Trading</div>
             </div>
           </div>
           <h1 className="hero-heading">Enterprise Intelligence, Built for Action</h1>
@@ -33,7 +33,7 @@ export default function LoginPage({ onLogin }) {
 
             <LoginForm onSuccess={onLogin} />
 
-            <div className="credentials-line muted">Demo account · <strong>admin</strong> / <strong>admin</strong></div>
+            <div className="credentials-line muted">Demo account - <strong>admin</strong> / <strong>admin</strong></div>
           </div>
         </div>
       </div>

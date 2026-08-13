@@ -1,11 +1,36 @@
 import express from 'express';
 import cors from 'cors';
 
+<<<<<<< HEAD
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
+=======
+// --- Production/scalability hardening imports ---
+import { config } from './config/env.js';
+import { logger, httpLogger } from './config/logger.js';
+import { errorHandler, notFoundHandler, registerProcessSafetyNets } from './middleware/errorHandler.js';
+import { generalLimiter, strictLimiter } from './middleware/rateLimiter.js';
+import { validate, schemas } from './middleware/validate.js';
+import { healthRouter } from './routes/health.js';
+import { metricsCollector, metricsRouter } from './routes/metrics.js';
+
+registerProcessSafetyNets(logger);
+
+const app = express();
+const PORT = config.port;
+
+app.use(cors({ origin: config.corsOrigin }));
+app.use(express.json());
+app.use(httpLogger); // structured request logging, adds req.id + req.log
+app.use(metricsCollector); // prometheus request metrics (count, duration, errors)
+app.use(healthRouter); // /health and /ready - unauthenticated, unrate-limited on purpose
+app.use(metricsRouter); // /metrics - prometheus scrape endpoint (unauthenticated on purpose)
+// --- Auth middleware should slot in HERE once the auth teammate lands it ---
+app.use('/api', generalLimiter); // baseline rate limit for all API routes
+>>>>>>> kairavi
 
 // ==========================================
 // 1. IN-MEMORY DATABASE & CONFIG
@@ -24,6 +49,7 @@ let catalog = JSON.parse(JSON.stringify(INITIAL_CATALOG));
 let transactions = [];
 let stocksHistoricalData = [];
 
+<<<<<<< HEAD
 // Assistant runtime state (in-memory sandbox)
 const assistantSessions = new Map();
 const assistantRateLimit = new Map();
@@ -36,6 +62,8 @@ const assistantMetrics = {
   lastRequestAt: null
 };
 
+=======
+>>>>>>> kairavi
 // ==========================================
 // 2. STOCK & TRANSACTION DATA GENERATOR (SEED)
 // ==========================================
@@ -129,6 +157,7 @@ function simulatePriceImpact(category, quantity) {
   }
 }
 
+<<<<<<< HEAD
 function getKpiSnapshot() {
   const totalRevenue = transactions.reduce((sum, tx) => sum + tx.totalPrice, 0);
   const totalOrders = transactions.length;
@@ -345,6 +374,8 @@ async function tryLLMAssistantResponse(query, cart = [], sessionId = 'default-se
   }
 }
 
+=======
+>>>>>>> kairavi
 // ==========================================
 // 3. BACKTESTER ENGINE (LOOK-AHEAD BIAS-FREE)
 // ==========================================
@@ -579,11 +610,16 @@ function parseAssistantQuery(query, cart = []) {
     return { textResponse, actions };
   }
 
+<<<<<<< HEAD
   // Cart Status query (exclude explicit add/buy intents)
   if (
     lower.match(/\b(cart|shopping cart|my items|show cart|what is in my cart)\b/) &&
     !lower.match(/\b(add|buy)\b/)
   ) {
+=======
+  // Cart Status query
+  if (lower.match(/\b(cart|shopping cart|my items|show cart|what is in my cart)\b/)) {
+>>>>>>> kairavi
     if (cart.length === 0) {
       textResponse = "Your shopping cart is currently empty. Try asking: *'Add Quantum Laptop Pro to my cart'*";
     } else {
@@ -649,6 +685,7 @@ function parseAssistantQuery(query, cart = []) {
     }
   }
 
+<<<<<<< HEAD
   // Recommendations / gift / budget intent
   if (lower.match(/\b(recommend|suggest|gift|budget|under|below|cheap|best)\b/)) {
     const budgetMatch = lower.match(/(?:under|below)\s*\$?\s*(\d+)/) || lower.match(/\$\s*(\d+)/);
@@ -698,6 +735,8 @@ function parseAssistantQuery(query, cart = []) {
     return { textResponse, actions };
   }
 
+=======
+>>>>>>> kairavi
   // Fallback to General AI / Help
   textResponse = `I received: "${query}". I didn't quite catch the specific command.\n\n**Try saying:**\n` +
     `• *"Show catalog"* to view active inventory.\n` +
@@ -723,11 +762,16 @@ app.get('/api/transactions', (req, res) => {
   res.json(transactions);
 });
 
+<<<<<<< HEAD
 app.post('/api/transactions', (req, res) => {
   const { productId, quantity } = req.body;
   if (!productId || !quantity || quantity <= 0) {
     return res.status(400).json({ error: 'Invalid product or quantity' });
   }
+=======
+app.post('/api/transactions', validate(schemas.createTransaction), (req, res) => {
+  const { productId, quantity } = req.body;
+>>>>>>> kairavi
 
   const product = catalog.find(p => p.id === productId);
   if (!product) {
@@ -763,11 +807,16 @@ app.post('/api/transactions', (req, res) => {
 });
 
 // Bulk checkout API
+<<<<<<< HEAD
 app.post('/api/transactions/checkout', (req, res) => {
   const { cartItems } = req.body; // Array of { product: {id, ...}, quantity: N }
   if (!cartItems || !Array.isArray(cartItems) || cartItems.length === 0) {
     return res.status(400).json({ error: 'Empty cart cannot be checked out' });
   }
+=======
+app.post('/api/transactions/checkout', strictLimiter, validate(schemas.checkout), (req, res) => {
+  const { cartItems } = req.body; // Array of { product: {id, ...}, quantity: N }
+>>>>>>> kairavi
 
   // Validate all items
   for (const item of cartItems) {
@@ -808,7 +857,17 @@ app.post('/api/transactions/checkout', (req, res) => {
 
 // KPIs API
 app.get('/api/kpis', (req, res) => {
+<<<<<<< HEAD
   const kpis = getKpiSnapshot();
+=======
+  const totalRevenue = transactions.reduce((sum, tx) => sum + tx.totalPrice, 0);
+  const totalOrders = transactions.length;
+  
+  const techSales = transactions.filter(t => t.category === 'Tech').reduce((sum, tx) => sum + tx.totalPrice, 0);
+  const retailSales = transactions.filter(t => t.category === 'Retail').reduce((sum, tx) => sum + tx.totalPrice, 0);
+
+  const avgOrderValue = totalOrders > 0 ? parseFloat((totalRevenue / totalOrders).toFixed(2)) : 0;
+>>>>>>> kairavi
   
   // Tickers list with current values
   const lastIndex = stocksHistoricalData.length - 1;
@@ -816,12 +875,21 @@ app.get('/api/kpis', (req, res) => {
   const currentRetailStock = lastIndex >= 0 ? stocksHistoricalData[lastIndex].RETL : 80.00;
 
   res.json({
+<<<<<<< HEAD
     totalRevenue: kpis.totalRevenue,
     totalOrders: kpis.totalOrders,
     avgOrderValue: kpis.avgOrderValue,
     categorySales: {
       Tech: kpis.techSales,
       Retail: kpis.retailSales
+=======
+    totalRevenue: parseFloat(totalRevenue.toFixed(2)),
+    totalOrders,
+    avgOrderValue,
+    categorySales: {
+      Tech: parseFloat(techSales.toFixed(2)),
+      Retail: parseFloat(retailSales.toFixed(2))
+>>>>>>> kairavi
     },
     currentStocks: {
       TECH: currentTechStock,
@@ -831,11 +899,16 @@ app.get('/api/kpis', (req, res) => {
 });
 
 // Backtesting API
+<<<<<<< HEAD
 app.post('/api/backtest', (req, res) => {
   const { strategyName, ticker, initialCapital } = req.body;
   if (!strategyName || !ticker) {
     return res.status(400).json({ error: 'Missing strategyName or ticker' });
   }
+=======
+app.post('/api/backtest', validate(schemas.backtest), (req, res) => {
+  const { strategyName, ticker, initialCapital } = req.body;
+>>>>>>> kairavi
 
   const result = runBacktest(
     strategyName, 
@@ -852,6 +925,7 @@ app.get('/api/stocks', (req, res) => {
 });
 
 // Chatbot Parser API
+<<<<<<< HEAD
 app.post('/api/assistant', async (req, res) => {
   const { query, cart, sessionId = 'default-session', userId = 'demo-user' } = req.body;
   assistantMetrics.totalRequests += 1;
@@ -919,6 +993,13 @@ app.get('/api/assistant/health', (req, res) => {
     llmEnabled: Boolean(process.env.OPENAI_API_KEY),
     activeSessions: assistantSessions.size
   });
+=======
+app.post('/api/assistant', strictLimiter, validate(schemas.assistantQuery), (req, res) => {
+  const { query, cart } = req.body;
+
+  const parseResult = parseAssistantQuery(query, cart || []);
+  res.json(parseResult);
+>>>>>>> kairavi
 });
 
 // Reset Sandbox API
@@ -928,7 +1009,30 @@ app.post('/api/reset', (req, res) => {
   res.json({ success: true, message: 'Sandbox data reset successfully.' });
 });
 
+<<<<<<< HEAD
 // Start Server
 app.listen(PORT, () => {
   console.log(`🚀 Enterprise Intelligence Platform backend running at http://localhost:${PORT}`);
 });
+=======
+// --- 404 + centralized error handling (must be registered LAST) ---
+app.use(notFoundHandler);
+app.use(errorHandler);
+
+// Start Server
+const server = app.listen(PORT, () => {
+  logger.info(`🚀 Enterprise Intelligence Platform backend running at http://localhost:${PORT} [${config.env}]`);
+});
+
+// Graceful shutdown: stop accepting new connections, let in-flight requests finish
+const shutdown = (signal) => {
+  logger.info(`${signal} received: shutting down gracefully`);
+  server.close(() => {
+    logger.info('Server closed');
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(1), 10000).unref(); // force-exit if it hangs
+};
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+>>>>>>> kairavi

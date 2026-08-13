@@ -715,6 +715,7 @@ h1, h2, h3, h4, h5, h6 {
   margin-top: 20px;
 }
 
+<<<<<<< HEAD
 .assistant-page-grid {
   display: grid;
   grid-template-columns: 2fr 1fr;
@@ -794,6 +795,8 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--text-secondary);
 }
 
+=======
+>>>>>>> kairavi
 /* Animations */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(6px); }
@@ -831,6 +834,7 @@ h1, h2, h3, h4, h5, h6 {
   .validator-grid {
     grid-template-columns: 1fr;
   }
+<<<<<<< HEAD
   .assistant-page-grid {
     grid-template-columns: 1fr;
   }
@@ -839,4 +843,6 @@ h1, h2, h3, h4, h5, h6 {
     height: auto;
     overflow: visible;
   }
+=======
+>>>>>>> kairavi
 }

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Bot, X, Send, ShoppingBag } from 'lucide-react';
 
+<<<<<<< HEAD
 export default function AssistantWidget({ catalog = [], kpis = null, cart = [], addToCart, clearCart, checkoutCart, placeDirectPurchase, setActivePage }) {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -12,6 +13,11 @@ export default function AssistantWidget({ catalog = [], kpis = null, cart = [], 
     kpiSnapshot: null,
     lowStockAlerts: []
   });
+=======
+export default function AssistantWidget({ cart = [], addToCart, clearCart, checkoutCart, placeDirectPurchase, setActivePage }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [query, setQuery] = useState('');
+>>>>>>> kairavi
   const [messages, setMessages] = useState([
     {
       sender: 'assistant',
@@ -20,11 +26,14 @@ export default function AssistantWidget({ catalog = [], kpis = null, cart = [], 
   ]);
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef(null);
+<<<<<<< HEAD
   const sessionIdRef = useRef(localStorage.getItem('assistantSessionId') || `session_${Math.random().toString(36).slice(2)}`);
 
   useEffect(() => {
     localStorage.setItem('assistantSessionId', sessionIdRef.current);
   }, []);
+=======
+>>>>>>> kairavi
 
   // Auto-scroll to bottom of chat
   useEffect(() => {
@@ -33,6 +42,7 @@ export default function AssistantWidget({ catalog = [], kpis = null, cart = [], 
     }
   }, [messages, isTyping]);
 
+<<<<<<< HEAD
   useEffect(() => {
     setLatestCards(prev => ({
       ...prev,
@@ -46,6 +56,8 @@ export default function AssistantWidget({ catalog = [], kpis = null, cart = [], 
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value || 0);
   };
 
+=======
+>>>>>>> kairavi
   const handleSend = async (textToSend) => {
     const text = textToSend || query;
     if (!text.trim()) return;
@@ -60,11 +72,16 @@ export default function AssistantWidget({ catalog = [], kpis = null, cart = [], 
       const response = await fetch('/api/assistant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+<<<<<<< HEAD
         body: JSON.stringify({ query: text, cart, sessionId: sessionIdRef.current, userId: 'demo-user' })
+=======
+        body: JSON.stringify({ query: text, cart })
+>>>>>>> kairavi
       });
 
       if (response.ok) {
         const data = await response.json();
+<<<<<<< HEAD
         if (data.meta) {
           setAssistantMode(data.meta.mode || 'rule_engine');
           setLlmEnabled(Boolean(data.meta.llmEnabled));
@@ -75,6 +92,8 @@ export default function AssistantWidget({ catalog = [], kpis = null, cart = [], 
           kpiSnapshot: kpis,
           lowStockAlerts: catalog.filter(p => p.inventory < 15).slice(0, 2)
         });
+=======
+>>>>>>> kairavi
         
         setIsTyping(false);
         setMessages(prev => [...prev, { sender: 'assistant', text: data.textResponse }]);
@@ -133,10 +152,14 @@ export default function AssistantWidget({ catalog = [], kpis = null, cart = [], 
               <div className="chat-status"></div>
               <div>
                 <strong style={{ fontSize: '0.85rem' }}>Retail AI Assistant</strong>
+<<<<<<< HEAD
                 <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
                   {assistantMode === 'llm' ? 'Connected (LLM + Tools)' : 'Connected (Rule Engine)'}
                   {!llmEnabled && ' - API key not set'}
                 </div>
+=======
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Connected (Offline NLP)</div>
+>>>>>>> kairavi
               </div>
             </div>
             <button 
@@ -165,6 +188,7 @@ export default function AssistantWidget({ catalog = [], kpis = null, cart = [], 
               </div>
             )}
             <div ref={messagesEndRef} />
+<<<<<<< HEAD
 
             {(latestCards.recommendations.length > 0 || latestCards.cartPreview.length > 0 || latestCards.kpiSnapshot || latestCards.lowStockAlerts.length > 0) && (
               <div className="assistant-widget-cards">
@@ -215,6 +239,8 @@ export default function AssistantWidget({ catalog = [], kpis = null, cart = [], 
                 )}
               </div>
             )}
+=======
+>>>>>>> kairavi
           </div>
 
           {/* Quick Actions Suggestions */}

@@ -8,7 +8,8 @@ import {
   RefreshCw, 
   ShoppingCart, 
   Wifi, 
-  WifiOff 
+  WifiOff,
+  LogOut 
 } from 'lucide-react';
 
 // Import Pages
@@ -32,6 +33,15 @@ function App() {
   const [apiStatus, setApiStatus] = useState(false);
   const [lastNotification, setLastNotification] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState(() => {
+    if (typeof window === 'undefined') return 'admin';
+    return localStorage.getItem('eintel_username') || 'admin';
+  });
+
+  const handleSignOut = () => {
+    localStorage.removeItem('eintel_username');
+    setCurrentUser('Guest');
+  };
 
   // Fetch all states from the server
   const refreshAllData = useCallback(async () => {
@@ -202,6 +212,11 @@ function App() {
         </nav>
 
         <div className="sidebar-footer">
+          <div className="user-info-row">
+            <span className="signed-in-label">Signed in as</span>
+            <span className="signed-in-user">{currentUser}</span>
+          </div>
+
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             {apiStatus ? (
               <Wifi size={14} className="trend-up" />
@@ -210,6 +225,11 @@ function App() {
             )}
             <span>Backend: {apiStatus ? "Connected" : "Disconnected"}</span>
           </div>
+
+          <button onClick={handleSignOut} className="btn btn-secondary sidebar-signout-btn">
+            <LogOut size={12} /> Sign out
+          </button>
+
           <button onClick={resetSandbox} className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '0.75rem', width: '100%' }}>
             <RefreshCw size={12} /> Reset Sandbox
           </button>

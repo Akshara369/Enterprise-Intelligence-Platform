@@ -14,9 +14,13 @@ export default function LoginForm({ onSuccess }) {
     setError(null);
     setLoading(true);
     try {
-      const ok = await login(username.trim(), password);
+      const cleanUsername = username.trim();
+      const ok = await login(cleanUsername, password);
       if (!ok) setError('Invalid username or password');
-      else onSuccess && onSuccess();
+      else {
+        localStorage.setItem('eintel_username', cleanUsername);
+        onSuccess && onSuccess(cleanUsername);
+      }
     } catch (err) {
       setError('Network or server error');
     } finally {

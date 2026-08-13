@@ -195,6 +195,35 @@ h1, h2, h3, h4, h5, h6 {
   gap: 8px;
 }
 
+.user-info-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 2px;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 4px;
+}
+
+.signed-in-label {
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.signed-in-user {
+  color: var(--text-primary);
+  font-size: 0.86rem;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.sidebar-signout-btn {
+  padding: 6px 10px;
+  font-size: 0.75rem;
+  width: 100%;
+}
+
 .main-content {
   flex: 1;
   display: flex;

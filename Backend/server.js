@@ -6,11 +6,26 @@ import Product from './models/Product.js';
 import Transaction from './models/Transaction.js';
 import StockHistory from './models/StockHistory.js';
 
-const app = express();
-const PORT = process.env.PORT || 5000;
+// --- Production/scalability hardening imports ---
+import { config } from './config/env.js';
+import { logger, httpLogger } from './config/logger.js';
+import { errorHandler, notFoundHandler, registerProcessSafetyNets } from './middleware/errorHandler.js';
+import { generalLimiter } from './middleware/rateLimiter.js';
+import { healthRouter } from './routes/health.js';
+import { metricsCollector, metricsRouter } from './routes/metrics.js';
 
-app.use(cors());
+registerProcessSafetyNets(logger);
+
+const app = express();
+const PORT = config.port || process.env.PORT || 5000;
+
+app.use(cors({ origin: config.corsOrigin || '*' }));
 app.use(express.json());
+app.use(httpLogger); // structured request logging
+app.use(metricsCollector); // prometheus request metrics
+app.use(healthRouter); // /health and /ready
+app.use(metricsRouter); // /metrics
+app.use('/api', generalLimiter); // baseline rate limit for API routes
 
 // Initialize MongoDB Connection
 connectDB();
@@ -34,14 +49,6 @@ async function simulatePriceImpact(category, quantity) {
 // 1. BACKTESTER ENGINE (LOOK-AHEAD BIAS-FREE)
 // ==========================================
 
-/**
- * Runs a backtest simulation on historical stock prices.
- * 
- * @param {Array} stocksHistoricalData - Historical stock price data array
- * @param {string} strategyName - 'transactionMomentum' or 'smaCrossover'
- * @param {string} ticker - 'TECH' or 'RETL'
- * @param {number} initialCapital - Starting portfolio cash (USD)
- */
 function runBacktest(stocksHistoricalData, strategyName, ticker, initialCapital = 10000) {
   let cash = initialCapital;
   let shares = 0;
@@ -250,7 +257,7 @@ async function parseAssistantQuery(query, cart = []) {
   }
 
   // Cart Status query
-  if (lower.match(/\b(cart|shopping cart|my items|show cart|what is in my cart)\b/)) {
+  if (lower.match(/\b(cart|shopping cart|my items|show cart|what is in my cart)\b/) && !lower.match(/\b(add|buy)\b/)) {
     if (cart.length === 0) {
       textResponse = "Your shopping cart is currently empty. Try asking: *'Add Quantum Laptop Pro to my cart'*";
     } else {
@@ -260,6 +267,55 @@ async function parseAssistantQuery(query, cart = []) {
         `\n\n**Subtotal:** $${cartTotal.toFixed(2)}\n\nWould you like me to checkout? (Type: *'checkout'*)`;
     }
     actions.push({ type: 'SHOW_CART' });
+    return { textResponse, actions };
+  }
+
+  // Recommendations / gift / budget intent
+  if (lower.match(/\b(recommend|suggest|gift|budget|under|below|cheap|best)\b/)) {
+    const budgetMatch = lower.match(/(?:under|below)\s*\$?\s*(\d+)/) || lower.match(/\$\s*(\d+)/);
+    const budget = budgetMatch ? parseFloat(budgetMatch[1]) : 150;
+
+    let categoryHint = null;
+    if (lower.match(/\b(tech|gadget|laptop|phone|headphones|developer|gamer)\b/)) {
+      categoryHint = 'Tech';
+    } else if (lower.match(/\b(office|retail|home|kitchen|shoes|bottle)\b/)) {
+      categoryHint = 'Retail';
+    }
+
+    let pool = catalog.filter(p => p.inventory > 0 && p.price <= budget);
+    if (categoryHint) {
+      const categoryOnly = pool.filter(p => p.category === categoryHint);
+      if (categoryOnly.length > 0) {
+        pool = categoryOnly;
+      }
+    }
+
+    const rankByValue = lower.match(/\b(cheap|budget|value)\b/);
+    const rankByBest = lower.match(/\b(best|top|high rated|high-rated)\b/);
+
+    const recommended = pool
+      .sort((a, b) => {
+        if (rankByValue && !rankByBest) {
+          return a.price - b.price || b.rating - a.rating;
+        }
+        return b.rating - a.rating || a.price - b.price;
+      })
+      .slice(0, 3);
+
+    if (recommended.length === 0) {
+      textResponse = `I could not find products under $${budget.toFixed(0)} right now. Try increasing your budget or ask me to show the full catalog.`;
+      actions.push({ type: 'SHOW_CATALOG' });
+      return { textResponse, actions };
+    }
+
+    const qualifier = categoryHint ? ` in ${categoryHint}` : '';
+    textResponse = `Great choice. Here are my recommendations${qualifier} under $${budget.toFixed(0)}:\n\n` +
+      recommended
+        .map((p, idx) => `${idx + 1}. **${p.name}** (${p.category}) - $${p.price.toFixed(2)} | Rating: ${p.rating}/5 | Stock: ${p.inventory}`)
+        .join('\n') +
+      `\n\nYou can say: *Add 1 ${recommended[0].name} to cart*.`;
+
+    actions.push({ type: 'SHOW_CATALOG' });
     return { textResponse, actions };
   }
 
@@ -363,11 +419,9 @@ app.post('/api/transactions', async (req, res) => {
       return res.status(400).json({ error: 'Insufficient inventory' });
     }
 
-    // Deduct inventory
     product.inventory -= quantity;
     await product.save();
 
-    // Create Transaction
     const totalPrice = parseFloat((product.price * quantity).toFixed(2));
     const newTx = new Transaction({
       id: `tx_${Math.random().toString(36).substring(2, 9)}`,
@@ -381,8 +435,6 @@ app.post('/api/transactions', async (req, res) => {
     });
 
     await newTx.save();
-
-    // Simulate price impact on ticker index
     await simulatePriceImpact(product.category, quantity);
 
     res.status(201).json(newTx);
@@ -399,7 +451,6 @@ app.post('/api/transactions/checkout', async (req, res) => {
       return res.status(400).json({ error: 'Empty cart cannot be checked out' });
     }
 
-    // Validate all items
     for (const item of cartItems) {
       const prod = await Product.findOne({ id: item.product.id });
       if (!prod || prod.inventory < item.quantity) {
@@ -409,7 +460,6 @@ app.post('/api/transactions/checkout', async (req, res) => {
 
     const createdTransactions = [];
     
-    // Process inventory deduction & transactions
     for (const item of cartItems) {
       const prod = await Product.findOne({ id: item.product.id });
       prod.inventory -= item.quantity;
@@ -429,8 +479,6 @@ app.post('/api/transactions/checkout', async (req, res) => {
 
       await newTx.save();
       createdTransactions.push(newTx);
-      
-      // Simulate price impact on stocks
       await simulatePriceImpact(prod.category, item.quantity);
     }
 
@@ -533,7 +581,10 @@ app.post('/api/reset', async (req, res) => {
   }
 });
 
+app.use(notFoundHandler);
+app.use(errorHandler);
+
 // Start Server
 app.listen(PORT, () => {
-  console.log(`🚀 Enterprise Intelligence Platform backend running at http://localhost:${PORT}`);
+  logger.info(`🚀 Enterprise Intelligence Platform backend running at http://localhost:${PORT}`);
 });

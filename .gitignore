@@ -1,20 +1,8 @@
-# Node modules
 node_modules/
 Frontend/node_modules/
 Backend/node_modules/
-
-# Build outputs
+.env
+Backend/.env
+.DS_Store
 dist/
 build/
-
-# Environment files
-.env
-
-# VSCode settings
-.vscode/
-
-# System files
-.DS_Store
-
-# Logs
-npm-debug.log

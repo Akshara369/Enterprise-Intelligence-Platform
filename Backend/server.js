@@ -1,5 +1,10 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import { connectDB, resetDatabase } from './config/db.js';
+import Product from './models/Product.js';
+import Transaction from './models/Transaction.js';
+import StockHistory from './models/StockHistory.js';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -7,129 +12,37 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-// ==========================================
-// 1. IN-MEMORY DATABASE & CONFIG
-// ==========================================
-
-const INITIAL_CATALOG = [
-  { id: 'prod_1', name: 'Quantum Laptop Pro', category: 'Tech', price: 1499.99, inventory: 45, rating: 4.8 },
-  { id: 'prod_2', name: 'Titanium Smartphone 15', category: 'Tech', price: 999.99, inventory: 60, rating: 4.7 },
-  { id: 'prod_3', name: 'AcousticANC Headphones', category: 'Tech', price: 299.99, inventory: 80, rating: 4.5 },
-  { id: 'prod_4', name: 'Apex Running Shoes', category: 'Retail', price: 129.99, inventory: 120, rating: 4.4 },
-  { id: 'prod_5', name: 'Barista Brewer Pro', category: 'Retail', price: 199.99, inventory: 35, rating: 4.6 },
-  { id: 'prod_6', name: 'HydroSport Smart Bottle', category: 'Retail', price: 49.99, inventory: 150, rating: 4.2 }
-];
-
-let catalog = JSON.parse(JSON.stringify(INITIAL_CATALOG));
-let transactions = [];
-let stocksHistoricalData = [];
-
-// ==========================================
-// 2. STOCK & TRANSACTION DATA GENERATOR (SEED)
-// ==========================================
-
-// Seed transactions and stock data for the last 30 days
-function generateSeedData() {
-  const data = [];
-  const seedTransactions = [];
-  const now = new Date();
-  
-  // Base prices for simulated stock tickers
-  // TECH (correlates with Tech sales)
-  // RETL (correlates with Retail sales)
-  let techPrice = 150.00;
-  let retlPrice = 80.00;
-
-  // Let's generate 30 days of data, 1 data point per day
-  for (let i = 30; i >= 0; i--) {
-    const currentDate = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-    const dateStr = currentDate.toISOString().split('T')[0];
-
-    // Seed transaction activity on this day (simulate 1 to 4 transactions daily)
-    const txCount = Math.floor(Math.random() * 3) + 1; // 1 to 3 transactions
-    let techVolumeToday = 0;
-    let retailVolumeToday = 0;
-
-    for (let t = 0; t < txCount; t++) {
-      // Pick a random product
-      const product = INITIAL_CATALOG[Math.floor(Math.random() * INITIAL_CATALOG.length)];
-      const qty = Math.floor(Math.random() * 3) + 1; // 1 to 3 items
-      const totalPrice = parseFloat((product.price * qty).toFixed(2));
-      const txTime = new Date(currentDate.getTime() + Math.floor(Math.random() * 8 * 60 * 60 * 1000)); // offset hours
-
-      seedTransactions.push({
-        id: `tx_${Math.random().toString(36).substring(2, 9)}`,
-        productId: product.id,
-        productName: product.name,
-        category: product.category,
-        quantity: qty,
-        price: product.price,
-        totalPrice: totalPrice,
-        timestamp: txTime.toISOString()
-      });
-
-      if (product.category === 'Tech') {
-        techVolumeToday += qty;
-      } else {
-        retailVolumeToday += qty;
-      }
-    }
-
-    // Simulate stock price changes based on transaction activity
-    // Higher transaction volume today leads to positive pressure on stock price tomorrow
-    const techGrowth = (techVolumeToday - 2) * 0.4 + (Math.random() - 0.48) * 2; // normal noise + momentum
-    const retlGrowth = (retailVolumeToday - 2) * 0.2 + (Math.random() - 0.49) * 1.2;
-
-    techPrice = parseFloat((techPrice + techGrowth).toFixed(2));
-    retlPrice = parseFloat((retlPrice + retlGrowth).toFixed(2));
-
-    if (techPrice < 10) techPrice = 10;
-    if (retlPrice < 10) retlPrice = 10;
-
-    data.push({
-      date: dateStr,
-      TECH: techPrice,
-      RETL: retlPrice,
-      techVolume: techVolumeToday,
-      retailVolume: retailVolumeToday
-    });
-  }
-
-  // Sort transactions chronologically
-  seedTransactions.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-
-  transactions = seedTransactions;
-  stocksHistoricalData = data;
-}
-
-// Initialize seed data
-generateSeedData();
+// Initialize MongoDB Connection
+connectDB();
 
 // Helper: Simulate stock price update after placing an order
-function simulatePriceImpact(category, quantity) {
-  const lastIndex = stocksHistoricalData.length - 1;
-  if (lastIndex >= 0) {
+async function simulatePriceImpact(category, quantity) {
+  const latestStock = await StockHistory.findOne().sort({ date: -1 });
+  if (latestStock) {
     const impactFactor = category === 'Tech' ? 0.8 : 0.4;
     const impact = quantity * impactFactor;
-    stocksHistoricalData[lastIndex][category === 'Tech' ? 'TECH' : 'RETL'] = parseFloat(
-      (stocksHistoricalData[lastIndex][category === 'Tech' ? 'TECH' : 'RETL'] + impact).toFixed(2)
-    );
+    if (category === 'Tech') {
+      latestStock.TECH = parseFloat((latestStock.TECH + impact).toFixed(2));
+    } else {
+      latestStock.RETL = parseFloat((latestStock.RETL + impact).toFixed(2));
+    }
+    await latestStock.save();
   }
 }
 
 // ==========================================
-// 3. BACKTESTER ENGINE (LOOK-AHEAD BIAS-FREE)
+// 1. BACKTESTER ENGINE (LOOK-AHEAD BIAS-FREE)
 // ==========================================
 
 /**
  * Runs a backtest simulation on historical stock prices.
- * It iterates day-by-day and feeds the strategy function only data available up to that day.
  * 
+ * @param {Array} stocksHistoricalData - Historical stock price data array
  * @param {string} strategyName - 'transactionMomentum' or 'smaCrossover'
  * @param {string} ticker - 'TECH' or 'RETL'
  * @param {number} initialCapital - Starting portfolio cash (USD)
  */
-function runBacktest(strategyName, ticker, initialCapital = 10000) {
+function runBacktest(stocksHistoricalData, strategyName, ticker, initialCapital = 10000) {
   let cash = initialCapital;
   let shares = 0;
   let portfolioHistory = [];
@@ -138,24 +51,17 @@ function runBacktest(strategyName, ticker, initialCapital = 10000) {
   const days = stocksHistoricalData.length;
   if (days < 5) return { error: 'Insufficient data for backtest' };
 
-  // Iterate day by day. This prevents look-ahead bias as we execute trade calculations
-  // utilizing strictly slice(0, t + 1) for indicators and signals.
   for (let t = 0; t < days; t++) {
     const currentDayData = stocksHistoricalData[t];
     const currentDate = currentDayData.date;
     const price = currentDayData[ticker];
 
-    // Create the isolated historical window up to the current day (index t)
     const historicalSlice = stocksHistoricalData.slice(0, t + 1);
     const sliceCount = historicalSlice.length;
 
-    // Get signals based on the strategy
-    let signal = 'HOLD'; // default
+    let signal = 'HOLD';
 
     if (strategyName === 'transactionMomentum') {
-      // STRATEGY: Retail Volume Momentum
-      // Buy if the transaction volume momentum (measured in product orders) shows positive growth.
-      // Compare 3-day average volume against 10-day average volume.
       if (sliceCount >= 10) {
         const volumeField = ticker === 'TECH' ? 'techVolume' : 'retailVolume';
         
@@ -178,7 +84,6 @@ function runBacktest(strategyName, ticker, initialCapital = 10000) {
         }
       }
     } else if (strategyName === 'smaCrossover') {
-      // STRATEGY: Simple Technical Indicator (SMA 5 / SMA 15 Crossover)
       if (sliceCount >= 15) {
         let sum5 = 0;
         for (let i = 0; i < 5; i++) {
@@ -192,8 +97,6 @@ function runBacktest(strategyName, ticker, initialCapital = 10000) {
         }
         const sma15 = sum15 / 15;
 
-        // Crossover logic
-        // If short-term average is above long-term, buy (upward price momentum)
         if (sma5 > sma15) {
           signal = 'BUY';
         } else if (sma5 < sma15) {
@@ -202,9 +105,7 @@ function runBacktest(strategyName, ticker, initialCapital = 10000) {
       }
     }
 
-    // Execute trades at today's close price
     if (signal === 'BUY' && cash > 0) {
-      // Buy max shares with available cash
       const sharesToBuy = Math.floor(cash / price);
       if (sharesToBuy > 0) {
         const cost = sharesToBuy * price;
@@ -220,7 +121,6 @@ function runBacktest(strategyName, ticker, initialCapital = 10000) {
         });
       }
     } else if (signal === 'SELL' && shares > 0) {
-      // Sell all shares
       const revenue = shares * price;
       cash = parseFloat((cash + revenue).toFixed(2));
       tradesLog.push({
@@ -234,7 +134,6 @@ function runBacktest(strategyName, ticker, initialCapital = 10000) {
       shares = 0;
     }
 
-    // Calculate end of day portfolio value
     const totalVal = parseFloat((cash + shares * price).toFixed(2));
     portfolioHistory.push({
       date: currentDate,
@@ -246,11 +145,9 @@ function runBacktest(strategyName, ticker, initialCapital = 10000) {
     });
   }
 
-  // Calculate Performance Metrics
   const finalValue = portfolioHistory[portfolioHistory.length - 1].equity;
   const totalReturn = ((finalValue - initialCapital) / initialCapital) * 100;
   
-  // Calculate Sharpe Ratio (using daily returns, simplified)
   let dailyReturns = [];
   for (let i = 1; i < portfolioHistory.length; i++) {
     const prev = portfolioHistory[i - 1].equity;
@@ -262,10 +159,8 @@ function runBacktest(strategyName, ticker, initialCapital = 10000) {
   const variance = dailyReturns.reduce((sum, val) => sum + Math.pow(val - avgDailyReturn, 2), 0) / dailyReturns.length;
   const stdDev = Math.sqrt(variance);
   
-  // Sharpe Ratio (assuming risk-free rate of 0 for simplicity, annualized assuming 252 trading days)
   const annualSharpe = stdDev > 0 ? parseFloat(((avgDailyReturn / stdDev) * Math.sqrt(252)).toFixed(2)) : 0;
 
-  // Max Drawdown calculation
   let peak = -Infinity;
   let maxDrawdown = 0;
   portfolioHistory.forEach(day => {
@@ -292,13 +187,16 @@ function runBacktest(strategyName, ticker, initialCapital = 10000) {
 }
 
 // ==========================================
-// 4. RETAIL AI ASSISTANT NATURAL LANGUAGE PARSER
+// 2. RETAIL AI ASSISTANT NATURAL LANGUAGE PARSER
 // ==========================================
 
-function parseAssistantQuery(query, cart = []) {
+async function parseAssistantQuery(query, cart = []) {
   const lower = query.toLowerCase().trim();
   let textResponse = '';
   let actions = [];
+
+  const catalog = await Product.find({});
+  const transactions = await Transaction.find({}).sort({ timestamp: -1 });
 
   // Greeting
   if (lower.match(/\b(hello|hi|hey|greet|good morning|good afternoon)\b/)) {
@@ -376,8 +274,6 @@ function parseAssistantQuery(query, cart = []) {
     return { textResponse, actions };
   }
 
-  // Match: Buy [Qty] [Product Name] or Add [Qty] [Product Name] to cart
-  // Examples: "Buy 2 Laptop", "Add Quantum Laptop Pro to cart", "Buy 1 Apex Running Shoes"
   const quantityMatch = lower.match(/\b(buy|add)\b\s+(\d+)\s+(.+)/) || lower.match(/\b(buy|add)\b\s+(.+)/);
   if (quantityMatch) {
     const verb = quantityMatch[1];
@@ -391,7 +287,6 @@ function parseAssistantQuery(query, cart = []) {
       prodQuery = quantityMatch[2].replace(/to cart|my cart/g, '').trim();
     }
 
-    // Try finding product in catalog by fuzzy name match
     const matchedProduct = catalog.find(p => p.name.toLowerCase().includes(prodQuery) || prodQuery.includes(p.name.toLowerCase()));
     
     if (matchedProduct) {
@@ -418,7 +313,6 @@ function parseAssistantQuery(query, cart = []) {
     }
   }
 
-  // Fallback to General AI / Help
   textResponse = `I received: "${query}". I didn't quite catch the specific command.\n\n**Try saying:**\n` +
     `• *"Show catalog"* to view active inventory.\n` +
     `• *"Add 2 Quantum Laptop Pro to cart"* to stage an order.\n` +
@@ -430,169 +324,213 @@ function parseAssistantQuery(query, cart = []) {
 }
 
 // ==========================================
-// 5. EXPRESS API ROUTING
+// 3. EXPRESS API ROUTING
 // ==========================================
 
 // Catalog API
-app.get('/api/catalog', (req, res) => {
-  res.json(catalog);
+app.get('/api/catalog', async (req, res) => {
+  try {
+    const catalog = await Product.find({});
+    res.json(catalog);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Transaction Ledger APIs
-app.get('/api/transactions', (req, res) => {
-  res.json(transactions);
+app.get('/api/transactions', async (req, res) => {
+  try {
+    const transactions = await Transaction.find({}).sort({ timestamp: -1 });
+    res.json(transactions);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.post('/api/transactions', (req, res) => {
-  const { productId, quantity } = req.body;
-  if (!productId || !quantity || quantity <= 0) {
-    return res.status(400).json({ error: 'Invalid product or quantity' });
+app.post('/api/transactions', async (req, res) => {
+  try {
+    const { productId, quantity } = req.body;
+    if (!productId || !quantity || quantity <= 0) {
+      return res.status(400).json({ error: 'Invalid product or quantity' });
+    }
+
+    const product = await Product.findOne({ id: productId });
+    if (!product) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    if (product.inventory < quantity) {
+      return res.status(400).json({ error: 'Insufficient inventory' });
+    }
+
+    // Deduct inventory
+    product.inventory -= quantity;
+    await product.save();
+
+    // Create Transaction
+    const totalPrice = parseFloat((product.price * quantity).toFixed(2));
+    const newTx = new Transaction({
+      id: `tx_${Math.random().toString(36).substring(2, 9)}`,
+      productId: product.id,
+      productName: product.name,
+      category: product.category,
+      quantity,
+      price: product.price,
+      totalPrice,
+      timestamp: new Date()
+    });
+
+    await newTx.save();
+
+    // Simulate price impact on ticker index
+    await simulatePriceImpact(product.category, quantity);
+
+    res.status(201).json(newTx);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  const product = catalog.find(p => p.id === productId);
-  if (!product) {
-    return res.status(404).json({ error: 'Product not found' });
-  }
-
-  if (product.inventory < quantity) {
-    return res.status(400).json({ error: 'Insufficient inventory' });
-  }
-
-  // Deduct inventory
-  product.inventory -= quantity;
-
-  // Create Transaction
-  const totalPrice = parseFloat((product.price * quantity).toFixed(2));
-  const newTx = {
-    id: `tx_${Math.random().toString(36).substring(2, 9)}`,
-    productId: product.id,
-    productName: product.name,
-    category: product.category,
-    quantity,
-    price: product.price,
-    totalPrice,
-    timestamp: new Date().toISOString()
-  };
-
-  transactions.unshift(newTx); // Add to front of ledger
-
-  // Simulate price impact on ticker index
-  simulatePriceImpact(product.category, quantity);
-
-  res.status(201).json(newTx);
 });
 
 // Bulk checkout API
-app.post('/api/transactions/checkout', (req, res) => {
-  const { cartItems } = req.body; // Array of { product: {id, ...}, quantity: N }
-  if (!cartItems || !Array.isArray(cartItems) || cartItems.length === 0) {
-    return res.status(400).json({ error: 'Empty cart cannot be checked out' });
-  }
-
-  // Validate all items
-  for (const item of cartItems) {
-    const prod = catalog.find(p => p.id === item.product.id);
-    if (!prod || prod.inventory < item.quantity) {
-      return res.status(400).json({ error: `Insufficient inventory for product: ${prod ? prod.name : 'Unknown'}` });
+app.post('/api/transactions/checkout', async (req, res) => {
+  try {
+    const { cartItems } = req.body;
+    if (!cartItems || !Array.isArray(cartItems) || cartItems.length === 0) {
+      return res.status(400).json({ error: 'Empty cart cannot be checked out' });
     }
-  }
 
-  const createdTransactions = [];
-  
-  // Process inventory deduction & transactions
-  for (const item of cartItems) {
-    const prod = catalog.find(p => p.id === item.product.id);
-    prod.inventory -= item.quantity;
+    // Validate all items
+    for (const item of cartItems) {
+      const prod = await Product.findOne({ id: item.product.id });
+      if (!prod || prod.inventory < item.quantity) {
+        return res.status(400).json({ error: `Insufficient inventory for product: ${prod ? prod.name : 'Unknown'}` });
+      }
+    }
 
-    const totalPrice = parseFloat((prod.price * item.quantity).toFixed(2));
-    const newTx = {
-      id: `tx_${Math.random().toString(36).substring(2, 9)}`,
-      productId: prod.id,
-      productName: prod.name,
-      category: prod.category,
-      quantity: item.quantity,
-      price: prod.price,
-      totalPrice,
-      timestamp: new Date().toISOString()
-    };
-
-    transactions.unshift(newTx);
-    createdTransactions.push(newTx);
+    const createdTransactions = [];
     
-    // Simulate price impact on stocks
-    simulatePriceImpact(prod.category, item.quantity);
-  }
+    // Process inventory deduction & transactions
+    for (const item of cartItems) {
+      const prod = await Product.findOne({ id: item.product.id });
+      prod.inventory -= item.quantity;
+      await prod.save();
 
-  res.status(201).json({ success: true, transactions: createdTransactions });
+      const totalPrice = parseFloat((prod.price * item.quantity).toFixed(2));
+      const newTx = new Transaction({
+        id: `tx_${Math.random().toString(36).substring(2, 9)}`,
+        productId: prod.id,
+        productName: prod.name,
+        category: prod.category,
+        quantity: item.quantity,
+        price: prod.price,
+        totalPrice,
+        timestamp: new Date()
+      });
+
+      await newTx.save();
+      createdTransactions.push(newTx);
+      
+      // Simulate price impact on stocks
+      await simulatePriceImpact(prod.category, item.quantity);
+    }
+
+    res.status(201).json({ success: true, transactions: createdTransactions });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // KPIs API
-app.get('/api/kpis', (req, res) => {
-  const totalRevenue = transactions.reduce((sum, tx) => sum + tx.totalPrice, 0);
-  const totalOrders = transactions.length;
-  
-  const techSales = transactions.filter(t => t.category === 'Tech').reduce((sum, tx) => sum + tx.totalPrice, 0);
-  const retailSales = transactions.filter(t => t.category === 'Retail').reduce((sum, tx) => sum + tx.totalPrice, 0);
+app.get('/api/kpis', async (req, res) => {
+  try {
+    const transactions = await Transaction.find({});
+    const stocksHistoricalData = await StockHistory.find({}).sort({ date: 1 });
 
-  const avgOrderValue = totalOrders > 0 ? parseFloat((totalRevenue / totalOrders).toFixed(2)) : 0;
-  
-  // Tickers list with current values
-  const lastIndex = stocksHistoricalData.length - 1;
-  const currentTechStock = lastIndex >= 0 ? stocksHistoricalData[lastIndex].TECH : 150.00;
-  const currentRetailStock = lastIndex >= 0 ? stocksHistoricalData[lastIndex].RETL : 80.00;
+    const totalRevenue = transactions.reduce((sum, tx) => sum + tx.totalPrice, 0);
+    const totalOrders = transactions.length;
+    
+    const techSales = transactions.filter(t => t.category === 'Tech').reduce((sum, tx) => sum + tx.totalPrice, 0);
+    const retailSales = transactions.filter(t => t.category === 'Retail').reduce((sum, tx) => sum + tx.totalPrice, 0);
 
-  res.json({
-    totalRevenue: parseFloat(totalRevenue.toFixed(2)),
-    totalOrders,
-    avgOrderValue,
-    categorySales: {
-      Tech: parseFloat(techSales.toFixed(2)),
-      Retail: parseFloat(retailSales.toFixed(2))
-    },
-    currentStocks: {
-      TECH: currentTechStock,
-      RETL: currentRetailStock
-    }
-  });
+    const avgOrderValue = totalOrders > 0 ? parseFloat((totalRevenue / totalOrders).toFixed(2)) : 0;
+    
+    const lastIndex = stocksHistoricalData.length - 1;
+    const currentTechStock = lastIndex >= 0 ? stocksHistoricalData[lastIndex].TECH : 150.00;
+    const currentRetailStock = lastIndex >= 0 ? stocksHistoricalData[lastIndex].RETL : 80.00;
+
+    res.json({
+      totalRevenue: parseFloat(totalRevenue.toFixed(2)),
+      totalOrders,
+      avgOrderValue,
+      categorySales: {
+        Tech: parseFloat(techSales.toFixed(2)),
+        Retail: parseFloat(retailSales.toFixed(2))
+      },
+      currentStocks: {
+        TECH: currentTechStock,
+        RETL: currentRetailStock
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Backtesting API
-app.post('/api/backtest', (req, res) => {
-  const { strategyName, ticker, initialCapital } = req.body;
-  if (!strategyName || !ticker) {
-    return res.status(400).json({ error: 'Missing strategyName or ticker' });
+app.post('/api/backtest', async (req, res) => {
+  try {
+    const { strategyName, ticker, initialCapital } = req.body;
+    if (!strategyName || !ticker) {
+      return res.status(400).json({ error: 'Missing strategyName or ticker' });
+    }
+
+    const stocksHistoricalData = await StockHistory.find({}).sort({ date: 1 });
+    const result = runBacktest(
+      stocksHistoricalData,
+      strategyName, 
+      ticker, 
+      initialCapital ? parseFloat(initialCapital) : 10000
+    );
+
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  const result = runBacktest(
-    strategyName, 
-    ticker, 
-    initialCapital ? parseFloat(initialCapital) : 10000
-  );
-
-  res.json(result);
 });
 
 // Stocks Historical API
-app.get('/api/stocks', (req, res) => {
-  res.json(stocksHistoricalData);
+app.get('/api/stocks', async (req, res) => {
+  try {
+    const stocksHistoricalData = await StockHistory.find({}).sort({ date: 1 });
+    res.json(stocksHistoricalData);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Chatbot Parser API
-app.post('/api/assistant', (req, res) => {
-  const { query, cart } = req.body;
-  if (!query) {
-    return res.status(400).json({ error: 'Query is required' });
-  }
+app.post('/api/assistant', async (req, res) => {
+  try {
+    const { query, cart } = req.body;
+    if (!query) {
+      return res.status(400).json({ error: 'Query is required' });
+    }
 
-  const parseResult = parseAssistantQuery(query, cart || []);
-  res.json(parseResult);
+    const parseResult = await parseAssistantQuery(query, cart || []);
+    res.json(parseResult);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Reset Sandbox API
-app.post('/api/reset', (req, res) => {
-  catalog = JSON.parse(JSON.stringify(INITIAL_CATALOG));
-  generateSeedData();
-  res.json({ success: true, message: 'Sandbox data reset successfully.' });
+app.post('/api/reset', async (req, res) => {
+  try {
+    await resetDatabase();
+    res.json({ success: true, message: 'Sandbox MongoDB data reset successfully.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Start Server

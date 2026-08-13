@@ -102,17 +102,46 @@ export default function Assistant({
       });
 
       const data = await response.json();
-      setMessages(prev => [...prev, { sender: 'assistant', text: data.textResponse || 'No response generated.' }]);
-      setRecommendations(Array.isArray(data.recommendations) ? data.recommendations : []);
-      setLatestCards({
-        recommendations: Array.isArray(data.recommendations) ? data.recommendations.slice(0, 3) : [],
-        cartPreview: cart.slice(0, 4),
-        kpiSnapshot: kpis,
-        lowStockAlerts: catalog.filter(p => p.inventory < 15).slice(0, 4)
-      });
-      setMeta(data.meta || { mode: 'rule_engine', llmEnabled: false });
-      await handleActions(data.actions || []);
-      await refreshAllData();
+
+const products = Array.isArray(data.products)
+  ? data.products
+  : Array.isArray(data.recommendations)
+    ? data.recommendations
+    : [];
+
+const assistantText =
+  data.message ||
+  data.textResponse ||
+  'No response generated.';
+
+setMessages(prev => [
+  ...prev,
+  {
+    sender: 'assistant',
+    text: assistantText
+  }
+]);
+
+setRecommendations(products);
+
+setLatestCards({
+  recommendations: products.slice(0, 3),
+  cartPreview: cart.slice(0, 4),
+  kpiSnapshot: kpis,
+  lowStockAlerts: catalog
+    .filter(p => p.inventory < 15)
+    .slice(0, 4)
+});
+
+setMeta(
+  data.meta || {
+    mode: 'local_tool_engine',
+    llmEnabled: false
+  }
+);
+
+await handleActions(data.actions || []);
+await refreshAllData();
     } catch (error) {
       setMessages(prev => [...prev, { sender: 'assistant', text: 'Connection issue: unable to reach assistant endpoint.' }]);
     } finally {
@@ -236,25 +265,97 @@ export default function Assistant({
             {recommendations.length === 0 ? (
               <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Ask for a recommendation to populate this panel.</div>
             ) : (
-              recommendations.map((rec) => (
-                <div key={rec.id} className="assistant-rec-card">
-                  <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{rec.name}</div>
-                  <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '4px' }}>{rec.reason}</div>
-                  <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <strong>{formatCurrency(rec.price)}</strong>
-                    <button
-                      className="btn btn-secondary"
-                      style={{ padding: '6px 10px', fontSize: '0.75rem' }}
-                      onClick={() => {
-                        const prod = catalog.find(p => p.id === rec.id);
-                        if (prod) addToCart(prod, 1);
-                      }}
-                    >
-                      Add
-                    </button>
-                  </div>
-                </div>
-              ))
+              recommendations.map((rec) => {
+  const product = catalog.find((p) => p.id === rec.id) || rec;
+
+  const reasons = Array.isArray(rec.recommendationReasons)
+    ? rec.recommendationReasons
+    : rec.reason
+      ? [rec.reason]
+      : [];
+
+  return (
+    <div key={rec.id} className="assistant-rec-card">
+
+      <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>
+        {rec.name}
+      </div>
+
+      <div
+        style={{
+          color: 'var(--text-secondary)',
+          fontSize: '0.8rem',
+          marginTop: '6px'
+        }}
+      >
+        {rec.category}
+      </div>
+
+      <div
+        style={{
+          display: 'flex',
+          gap: '12px',
+          marginTop: '8px',
+          fontSize: '0.8rem'
+        }}
+      >
+        <span>⭐ {rec.rating ?? 'N/A'}</span>
+
+        <span>
+          📦 {rec.inventory ?? 0} in stock
+        </span>
+      </div>
+
+      {reasons.length > 0 && (
+        <div
+          style={{
+            marginTop: '8px',
+            fontSize: '0.75rem',
+            color: 'var(--text-secondary)'
+          }}
+        >
+          {reasons.map((reason, index) => (
+            <div key={index}>
+              ✓ {reason}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div
+        style={{
+          marginTop: '10px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}
+      >
+        <strong>
+          {formatCurrency(rec.price)}
+        </strong>
+
+        <button
+          className="btn btn-secondary"
+          style={{
+            padding: '6px 10px',
+            fontSize: '0.75rem'
+          }}
+          disabled={!product || product.inventory <= 0}
+          onClick={() => {
+            if (product) {
+              addToCart(product, 1);
+            }
+          }}
+        >
+          {product?.inventory > 0
+            ? 'Add to Cart'
+            : 'Out of Stock'}
+        </button>
+      </div>
+
+    </div>
+  );
+})
             )}
           </div>
         </div>

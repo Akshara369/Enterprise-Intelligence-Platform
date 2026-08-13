@@ -5,6 +5,21 @@ import { connectDB, resetDatabase } from './config/db.js';
 import Product from './models/Product.js';
 import Transaction from './models/Transaction.js';
 import StockHistory from './models/StockHistory.js';
+import mongoose from 'mongoose';
+import productRouter from './routes/products.js';
+
+import {
+  searchProducts,
+  recommendProducts,
+  getProductDetails,
+  checkInventory
+} from './services/productService.js';
+
+import {
+  getSalesKPIs,
+  getTopProducts,
+  getCategoryPerformance
+} from './services/dataMartService.js';
 
 // --- Production/scalability hardening imports ---
 import { config } from './config/env.js';
@@ -18,6 +33,32 @@ registerProcessSafetyNets(logger);
 
 const app = express();
 const PORT = config.port || process.env.PORT || 5000;
+const DEMO_USER = Object.freeze({ id: 'user_admin', username: 'admin', password: 'admin', name: 'Platform Administrator', role: 'Administrator' });
+const authTokens = new Map();
+const assistantSessions = new Map();
+const assistantMetrics = { totalRequests: 0, ruleEngineResponses: 0, actionCalls: 0, lastRequestAt: null };
+
+function publicUser(user) { return { id: user.id, username: user.username, name: user.name, role: user.role }; }
+function getAuthToken(req) { return req.headers.authorization?.replace(/^Bearer\s+/i, ''); }
+function requireAdmin(req, res, next) {
+  const user = authTokens.get(getAuthToken(req));
+  if (!user) return res.status(401).json({ error: 'Authentication is required.' });
+  if (user.role !== 'Administrator') return res.status(403).json({ error: 'Administrator access is required.' });
+  req.user = user;
+  next();
+}
+function withTimeout(promise, timeoutMs = 2500) {
+  return Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error(`Timed out after ${timeoutMs}ms`)), timeoutMs))]);
+}
+async function probeService(name, path, check) {
+  const startedAt = performance.now();
+  try {
+    const detail = await withTimeout(check());
+    return { name, path, status: 'Healthy', httpStatus: 200, latencyMs: Math.round(performance.now() - startedAt), detail };
+  } catch (error) {
+    return { name, path, status: 'Down', httpStatus: 503, latencyMs: Math.round(performance.now() - startedAt), detail: error.message };
+  }
+}
 
 app.use(cors({ origin: config.corsOrigin || '*' }));
 app.use(express.json());
@@ -26,6 +67,7 @@ app.use(metricsCollector); // prometheus request metrics
 app.use(healthRouter); // /health and /ready
 app.use(metricsRouter); // /metrics
 app.use('/api', generalLimiter); // baseline rate limit for API routes
+app.use('/api/products', productRouter);
 
 // Initialize MongoDB Connection
 connectDB();
@@ -384,6 +426,29 @@ async function parseAssistantQuery(query, cart = []) {
 // 3. EXPRESS API ROUTING
 // ==========================================
 
+// Demo-only identity endpoints. Tokens are opaque and in-memory; no token,
+// password, or API key is returned by the developer report.
+app.post('/api/login', (req, res) => {
+  const { username, password } = req.body || {};
+  if (username !== DEMO_USER.username || password !== DEMO_USER.password) return res.status(401).json({ error: 'Invalid username or password' });
+  const accessToken = crypto.randomUUID();
+  const user = publicUser(DEMO_USER);
+  authTokens.set(accessToken, user);
+  res.json({ accessToken, user });
+});
+
+app.post('/api/refresh', (req, res) => {
+  const accessToken = getAuthToken(req);
+  const user = authTokens.get(accessToken);
+  if (!user) return res.status(401).json({ error: 'Session expired.' });
+  res.json({ accessToken, user });
+});
+
+app.post('/api/logout', (req, res) => {
+  authTokens.delete(getAuthToken(req));
+  res.status(204).end();
+});
+
 // Catalog API
 app.get('/api/catalog', async (req, res) => {
   try {
@@ -557,18 +622,882 @@ app.get('/api/stocks', async (req, res) => {
   }
 });
 
+async function runRetailAssistant(query, cart = []) {
+  const text = query.toLowerCase();
+  // --------------------------------
+// DATAMART / KPI INTENT
+// --------------------------------
+
+const kpiIntent =
+  text.includes('total sales') ||
+  text.includes('total revenue') ||
+  text.includes('overall revenue') ||
+  text.includes('how many transactions') ||
+  text.includes('number of transactions') ||
+  text.includes('transaction count') ||
+  text.includes('average order value') ||
+  text.includes('average order') ||
+  text.includes('average purchase');
+
+if (kpiIntent) {
+  const kpis = await getSalesKPIs();
+
+  return {
+    type: 'datamart_kpi',
+    message:
+      `Total revenue is ${kpis.revenue.toFixed(2)}. ` +
+      `There are ${kpis.transactions} transactions, ` +
+      `${kpis.units} units sold, and the average ` +
+      `transaction value is ${kpis.averageOrderValue.toFixed(2)}.`,
+    kpis,
+    products: [],
+    actions: []
+  };
+}
+
+const topProductIntent =
+  text.includes('best selling') ||
+  text.includes('best-selling') ||
+  text.includes('top selling') ||
+  text.includes('top product') ||
+  text.includes('most popular');
+
+if (topProductIntent) {
+  const products = await getTopProducts(5);
+
+  if (!products.length) {
+    return {
+      type: 'datamart_top_products',
+      message: 'There is no sales data available.',
+      products: [],
+      actions: []
+    };
+  }
+
+  const top = products[0];
+
+  return {
+    type: 'datamart_top_products',
+    message:
+      `${top.productName} is currently the top-selling ` +
+      `product by revenue, generating ${top.revenue.toFixed(2)} ` +
+      `from ${top.unitsSold} units sold.`,
+    products,
+    actions: []
+  };
+}
+
+const categoryIntent =
+  text.includes('best category') ||
+  text.includes('top category') ||
+  text.includes('category generates') ||
+  text.includes('category revenue');
+
+if (categoryIntent) {
+  const categories =
+    await getCategoryPerformance();
+
+  if (!categories.length) {
+    return {
+      type: 'datamart_category',
+      message: 'There is no category sales data available.',
+      categories: [],
+      actions: []
+    };
+  }
+
+  const top = categories[0];
+
+  return {
+    type: 'datamart_category',
+    message:
+      `${top._id} is the highest-revenue category with ` +
+      `${top.revenue.toFixed(2)} in revenue and ` +
+      `${top.unitsSold} units sold.`,
+    categories,
+    actions: []
+  };
+}
+
+  // --------------------------------
+// CART STATUS
+// --------------------------------
+
+if (
+  text.includes('what is in my cart') ||
+  text.includes("what's in my cart") ||
+  text.includes('show my cart') ||
+  text.includes('view my cart') ||
+  text.includes('cart summary')
+) {
+  if (!cart.length) {
+    return {
+      type: 'cart_status',
+      message: 'Your cart is currently empty.',
+      products: [],
+      cart,
+      actions: []
+    };
+  }
+
+  const getCartItemName = (item) =>
+  item.name ||
+  item.productName ||
+  item.product?.name ||
+  'Unknown product';
+
+const getCartItemPrice = (item) =>
+  Number(
+    item.price ??
+    item.unitPrice ??
+    item.product?.price ??
+    0
+  );
+
+const getCartItemQuantity = (item) =>
+  Number(
+    item.quantity ??
+    item.qty ??
+    1
+  );
+
+const total = cart.reduce(
+  (sum, item) =>
+    sum +
+    getCartItemPrice(item) *
+    getCartItemQuantity(item),
+  0
+);
+
+const itemSummary = cart
+  .map((item) => {
+    const name = getCartItemName(item);
+    const quantity = getCartItemQuantity(item);
+
+    return `${name} × ${quantity}`;
+  })
+  .join(', ');
+
+  return {
+    type: 'cart_status',
+    message:
+  `Your cart contains ${itemSummary}. ` +
+  `The current total is ${total.toFixed(2)}.`,
+    products: cart,
+    cart,
+    cartTotal: total,
+    actions: []
+  };
+}
+  // --------------------------------
+// CART / SHOPPING INTENT
+// --------------------------------
+
+const quantityMatch = text.match(
+  /\b(?:buy|add|purchase)\s+(\d+)\b/
+);
+
+const quantity = quantityMatch
+  ? Math.max(1, Number(quantityMatch[1]))
+  : 1;
+
+const cartIntent =
+  text.includes('add to cart') ||
+  text.includes('add ') ||
+  text.includes('buy ') ||
+  text.includes('purchase ');
+
+if (cartIntent) {
+ const productQuery = text
+  .replace(/\b(?:to my cart|into my cart|in my cart)\b/gi, '')
+  .replace(/\b(?:please|i|want|to|my|the|add|buy|purchase)\b/gi, '')
+  .replace(/\b(?:\d+)\b/gi, '')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+  const products = await searchProducts({
+    query: productQuery,
+    inStock: true,
+    limit: 5
+  });
+
+  if (!products.length) {
+    return {
+      type: 'cart_action',
+      message: `I couldn't find a product matching "${productQuery}".`,
+      products: [],
+      actions: []
+    };
+  }
+
+  const product = products[0];
+
+  if (product.inventory < quantity) {
+    return {
+      type: 'cart_action',
+      message:
+        `${product.name} only has ${product.inventory} ` +
+        `unit${product.inventory === 1 ? '' : 's'} available.`,
+      products: [product],
+      actions: []
+    };
+  }
+
+  return {
+    type: 'cart_action',
+    message:
+      `Added ${quantity} ${product.name}` +
+      `${quantity > 1 ? 's' : ''} to your cart.`,
+    products: [product],
+    actions: [
+      {
+        type: 'ADD_TO_CART',
+        product,
+        quantity
+      }
+    ]
+  };
+}
+
+// --------------------------------
+// CHECKOUT INTENT
+// --------------------------------
+
+if (
+  text.includes('checkout') ||
+  text.includes('check out')
+) {
+  return {
+    type: 'cart_action',
+    message: 'Proceeding to checkout.',
+    products: [],
+    actions: [
+      {
+        type: 'CHECKOUT'
+      }
+    ]
+  };
+}
+
+// --------------------------------
+// CLEAR CART INTENT
+// --------------------------------
+
+if (
+  text.includes('clear my cart') ||
+  text.includes('empty my cart') ||
+  text.includes('remove everything from my cart')
+) {
+  return {
+    type: 'cart_action',
+    message: 'Your cart has been cleared.',
+    products: [],
+    actions: [
+      {
+        type: 'CLEAR_CART'
+      }
+    ]
+  };
+}
+  // --------------------------------
+  // PRODUCT SEARCH
+  // --------------------------------
+
+  const priceMatch = text.match(
+    /(?:under|below|less than|max|within)\s*(?:₹|\$)?\s*([\d,]+)/
+  );
+
+  const maxPrice = priceMatch
+    ? Number(priceMatch[1].replace(/,/g, ''))
+    : undefined;
+
+  let category;
+
+  if (
+    text.includes('laptop') ||
+    text.includes('phone') ||
+    text.includes('headphone') ||
+    text.includes('tech')
+  ) {
+    category = 'Tech';
+  }
+
+  if (
+    text.includes('shoe') ||
+    text.includes('shoes') ||
+    text.includes('retail')
+  ) {
+    category = 'Retail';
+  }
+  // --------------------------------
+// INVENTORY INTENT
+// --------------------------------
+
+const inventoryIntent =
+  text.includes('in stock') ||
+  text.includes('inventory') ||
+  text.includes('available') ||
+  text.includes('stock');
+
+if (inventoryIntent) {
+  const products = await searchProducts({
+    query: text
+      .replace(/is|are|the|in stock|inventory|available|stock|how many/gi, '')
+      .trim(),
+    inStock: false,
+    limit: 5
+  });
+
+  if (!products.length) {
+    return {
+      type: 'inventory',
+      message: 'I could not find that product.',
+      products: [],
+      actions: []
+    };
+  }
+
+  const product = products[0];
+
+  const inventory = await checkInventory(product.id);
+
+  return {
+    type: 'inventory',
+    message: inventory.inStock
+      ? `${inventory.name} is in stock with ${inventory.inventory} units available.`
+      : `${inventory.name} is currently out of stock.`,
+    products: [product],
+    inventory,
+    actions: [
+      {
+        type: 'show_inventory',
+        productId: product.id
+      }
+    ]
+  };
+}
+
+// --------------------------------
+// PRODUCT DETAILS INTENT
+// --------------------------------
+
+const detailsIntent =
+  text.includes('tell me about') ||
+  text.includes('details') ||
+  text.includes('information about') ||
+  text.includes('what is the price') ||
+  text.includes('how much is');
+
+if (detailsIntent) {
+  const products = await searchProducts({
+    query: text
+      .replace(
+        /tell me about|details|information about|what is the price|how much is/gi,
+        ''
+      )
+      .trim(),
+    limit: 5
+  });
+
+  if (!products.length) {
+    return {
+      type: 'product_details',
+      message: 'I could not find that product.',
+      products: [],
+      actions: []
+    };
+  }
+
+  const product = await getProductDetails(products[0].id);
+
+  return {
+    type: 'product_details',
+    message:
+      `${product.name} costs ${product.price}. ` +
+      `It has a ${product.rating}/5 rating and ` +
+      `${product.inventory} units currently in stock.`,
+    products: [product],
+    actions: [
+      {
+        type: 'show_product_details',
+        productId: product.id
+      }
+    ]
+  };
+}
+  // Recommendation intent
+  const recommendationIntent =
+    text.includes('recommend') ||
+    text.includes('suggest') ||
+    text.includes('best') ||
+    text.includes('which should');
+
+  if (recommendationIntent) {
+    const products = await recommendProducts({
+      category,
+      maxPrice,
+      minRating: 4,
+      limit: 5
+    });
+
+    return {
+      type: 'recommendations',
+      message: products.length
+        ? `I found ${products.length} products that match your requirements.`
+        : 'I could not find products matching those requirements.',
+      products,
+      actions: [
+        {
+          type: 'show_recommendations',
+          count: products.length
+        }
+      ]
+    };
+  }
+
+  // Normal search
+  const products = await searchProducts({
+    query:
+      category ||
+      text
+        .replace(/under.*$/i, '')
+        .replace(/below.*$/i, '')
+        .trim(),
+
+    category,
+    maxPrice,
+    inStock: true,
+    limit: 10
+  });
+
+  return {
+    type: 'product_search',
+    message: products.length
+      ? `I found ${products.length} products matching your request.`
+      : 'I could not find any products matching your request.',
+    products,
+    actions: [
+      {
+        type: 'show_products',
+        count: products.length
+      }
+    ]
+  };
+}
+
 // Chatbot Parser API
 app.post('/api/assistant', async (req, res) => {
   try {
-    const { query, cart } = req.body;
-    if (!query) {
-      return res.status(400).json({ error: 'Query is required' });
+    const {
+      query,
+      cart = [],
+      sessionId = 'default-session'
+    } = req.body;
+
+    if (!query || !query.trim()) {
+      return res.status(400).json({
+        error: 'Query is required'
+      });
     }
 
-    const parseResult = await parseAssistantQuery(query, cart || []);
-    res.json(parseResult);
+    const result = await runRetailAssistant(query, cart);
+
+    assistantMetrics.totalRequests += 1;
+    assistantMetrics.ruleEngineResponses += 1;
+    assistantMetrics.actionCalls += result.actions?.length || 0;
+    assistantMetrics.lastRequestAt = new Date().toISOString();
+
+    assistantSessions.set(sessionId, Date.now());
+
+    res.json({
+      ...result,
+
+      meta: {
+        mode: 'local_tool_engine',
+        llmEnabled: false,
+        toolsUsed: [
+  result.type === 'recommendations'
+    ? 'recommendProducts'
+    : result.type === 'inventory'
+      ? 'checkInventory'
+      : result.type === 'product_details'
+        ? 'getProductDetails'
+        : result.type.startsWith('datamart')
+          ? 'DataMart'
+          : result.type === 'cart_action'
+            ? 'Cart'
+            : 'searchProducts'
+]
+        
+      }
+    });
+
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Retail assistant error:', err);
+
+    res.status(500).json({
+      error: 'Retail assistant failed',
+      message: err.message
+    });
+  }
+});
+app.get('/api/assistant/health', (_req, res) => {
+  res.json({
+    status: 'Healthy',
+    mode: process.env.OPENAI_API_KEY ? 'rule_engine_with_ai_key_configured' : 'rule_engine',
+    model: process.env.OPENAI_MODEL || 'Not configured',
+    apiKeyConfigured: Boolean(process.env.OPENAI_API_KEY),
+    guardrailLimit: `${config.rateLimit.max} requests / ${Math.round(config.rateLimit.windowMs / 60000)} minute`,
+    activeSessions: assistantSessions.size,
+    metrics: assistantMetrics
+  });
+});
+
+app.get('/api/developer-report', requireAdmin, async (_req, res, next) => {
+  try {
+    const dbConnected = mongoose.connection.readyState === 1;
+
+    const services = await Promise.all([
+      probeService(
+        'Core API',
+        '/health',
+        async () => {
+          if (!dbConnected) {
+            throw new Error('MongoDB unavailable');
+          }
+
+          return 'Express API and MongoDB ready';
+        }
+      ),
+
+      probeService(
+        'Retail',
+        '/api/catalog',
+        async () => {
+          const count = await Product.countDocuments();
+          return `${count} products available`;
+        }
+      ),
+
+      probeService(
+        'DataMart',
+        '/api/transactions',
+        async () => {
+          const count = await Transaction.countDocuments();
+
+          if (count === 0) {
+            throw new Error('No transaction data');
+          }
+
+          return `${count} transaction records`;
+        }
+      ),
+
+      probeService(
+        'Backtesting',
+        '/api/stocks',
+        async () => {
+          const count = await StockHistory.countDocuments();
+
+          if (count < 5) {
+            throw new Error('Insufficient market data');
+          }
+
+          return `${count} market rows`;
+        }
+      ),
+
+      probeService(
+        'AI Assistant',
+        '/api/assistant/health',
+        async () => {
+          const count = await Product.countDocuments();
+
+          if (count === 0) {
+            throw new Error('Product catalog unavailable');
+          }
+
+          return 'Assistant dependencies available';
+        }
+      ),
+    ]);
+
+    const [
+      products,
+      transactions,
+      stocks,
+      duplicateTransactions,
+      duplicateStocks,
+    ] = await Promise.all([
+      Product.find(
+        {},
+        { id: 1, inventory: 1 }
+      ).lean(),
+
+      Transaction.find(
+        {},
+        {
+          id: 1,
+          productId: 1,
+          productName: 1,
+          category: 1,
+          quantity: 1,
+          price: 1,
+          totalPrice: 1,
+          timestamp: 1,
+        }
+      ).lean(),
+
+      StockHistory.find(
+        {},
+        {
+          date: 1,
+          TECH: 1,
+          RETL: 1,
+          techVolume: 1,
+          retailVolume: 1,
+        }
+      ).lean(),
+
+      Transaction.aggregate([
+        {
+          $group: {
+            _id: '$id',
+            count: { $sum: 1 },
+          },
+        },
+        {
+          $match: {
+            count: { $gt: 1 },
+          },
+        },
+        {
+          $count: 'count',
+        },
+      ]),
+
+      StockHistory.aggregate([
+        {
+          $group: {
+            _id: '$date',
+            count: { $sum: 1 },
+          },
+        },
+        {
+          $match: {
+            count: { $gt: 1 },
+          },
+        },
+        {
+          $count: 'count',
+        },
+      ]),
+    ]);
+
+    const requiredTransactionFields = [
+      'id',
+      'productId',
+      'productName',
+      'category',
+      'quantity',
+      'price',
+      'totalPrice',
+      'timestamp',
+    ];
+
+    const invalidTransactions = transactions.filter((row) => {
+      const missingField = requiredTransactionFields.some(
+        (field) =>
+          row[field] === undefined ||
+          row[field] === null
+      );
+
+      return (
+        missingField ||
+        !Number.isFinite(row.quantity) ||
+        !Number.isFinite(row.price) ||
+        !Number.isFinite(row.totalPrice) ||
+        Number.isNaN(Date.parse(row.timestamp))
+      );
+    }).length;
+
+    const invalidStocks = stocks.filter((row) => {
+      return (
+        !row.date ||
+        !Number.isFinite(row.TECH) ||
+        !Number.isFinite(row.RETL) ||
+        !Number.isFinite(row.techVolume) ||
+        !Number.isFinite(row.retailVolume)
+      );
+    }).length;
+
+    const duplicateRecords =
+      (duplicateTransactions[0]?.count || 0) +
+      (duplicateStocks[0]?.count || 0);
+
+    const lowStockProducts = products.filter(
+      (product) => product.inventory < 15
+    ).length;
+
+    const servicesHealthy = services.filter(
+      (service) => service.status === 'Healthy'
+    ).length;
+
+    const dataQualityStatus =
+      invalidTransactions === 0 &&
+      invalidStocks === 0 &&
+      duplicateRecords === 0
+        ? 'healthy'
+        : 'attention_required';
+
+    const modules = [
+      {
+        name: 'AI Retail Assistant',
+        status: services[4].status,
+        detail: assistantSessions.size
+          ? `${assistantSessions.size} active session(s)`
+          : 'No active sessions',
+      },
+      {
+        name: 'DataMart',
+        status: services[2].status,
+        detail: `${transactions.length} transaction records`,
+      },
+      {
+        name: 'Backtesting',
+        status: services[3].status,
+        detail: `${stocks.length} historical price records`,
+      },
+      {
+        name: 'RAG',
+        status: 'Degraded',
+        detail: 'Not configured',
+      },
+      {
+        name: 'Product / Inventory',
+        status: services[1].status,
+        detail: `${products.length} products, ${lowStockProducts} low stock`,
+      },
+    ];
+
+    const criticalFailure =
+      !dbConnected ||
+      servicesHealthy === 0;
+
+    const hasWarnings =
+      dataQualityStatus !== 'healthy' ||
+      modules.some(
+        (module) => module.status === 'Degraded'
+      );
+
+    let readiness = 'READY';
+
+    if (criticalFailure) {
+      readiness = 'NOT READY';
+    } else if (
+      servicesHealthy < services.length ||
+      hasWarnings
+    ) {
+      readiness = 'READY WITH WARNINGS';
+    }
+
+    res.json({
+      generatedAt: new Date().toISOString(),
+
+      apiHealth: {
+        status:
+          servicesHealthy === services.length
+            ? 'Healthy'
+            : servicesHealthy > 0
+              ? 'Degraded'
+              : 'Down',
+
+        reachable: servicesHealthy,
+        total: services.length,
+      },
+
+      services,
+
+      modules,
+
+      assistant: {
+        mode: process.env.OPENAI_API_KEY
+          ? 'rule_engine_with_ai_key_configured'
+          : 'rule_engine',
+
+        model:
+          process.env.OPENAI_MODEL ||
+          'Not configured',
+
+        apiKeyConfigured:
+          Boolean(process.env.OPENAI_API_KEY),
+
+        guardrailLimit:
+          `${config.rateLimit.max} requests / ${Math.round(
+            config.rateLimit.windowMs / 60000
+          )} minute`,
+
+        activeSessions:
+          assistantSessions.size,
+      },
+
+      dataQuality: {
+        status: dataQualityStatus,
+
+        catalogProducts:
+          products.length,
+
+        transactionRows:
+          transactions.length,
+
+        stockHistoryRows:
+          stocks.length,
+
+        invalidTransactionRows:
+          invalidTransactions,
+
+        invalidStockRows:
+          invalidStocks,
+
+        duplicateRecords,
+
+        lowStockProducts,
+      },
+
+      storage: {
+        mode: 'MongoDB',
+
+        status: dbConnected
+          ? 'Connected'
+          : 'Disconnected',
+
+        persistent: true,
+      },
+
+      configuration: {
+        authentication:
+          'Demo bearer-token authentication',
+
+        persistence:
+          'MongoDB',
+
+        apiVersion:
+          'unversioned',
+      },
+
+      deliveryReadiness: {
+        status: readiness,
+
+        reason:
+          readiness === 'READY'
+            ? 'All required services and data checks are healthy.'
+            : readiness === 'READY WITH WARNINGS'
+              ? 'Core services are available, but some optional or data-quality checks need attention.'
+              : 'Critical backend dependencies are unavailable.',
+      },
+    });
+  } catch (error) {
+    next(error);
   }
 });
 

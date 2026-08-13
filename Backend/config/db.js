@@ -120,13 +120,19 @@ export async function resetDatabase() {
 }
 
 export async function connectDB() {
-  const mongoURI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/enterprise_intelligence';
+  const mongoURI =
+    process.env.MONGODB_URI ||
+    'mongodb://127.0.0.1:27017/enterprise_intelligence';
+
   try {
-    await mongoose.connect(mongoURI);
-    console.log(`🍃 Connected to MongoDB at ${mongoURI}`);
+    await mongoose.connect(mongoURI, {
+      serverSelectionTimeoutMS: 5000,
+    });
+
+    console.log(`🍃 Connected to MongoDB`);
+
     await seedDatabase();
   } catch (error) {
     console.error('❌ MongoDB Connection Error:', error.message);
-    console.log('Ensure MongoDB is installed and running, or specify a valid MONGODB_URI.');
   }
 }

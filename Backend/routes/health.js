@@ -1,11 +1,11 @@
 import { Router } from 'express';
+import mongoose from 'mongoose';
 
 export const healthRouter = Router();
+
 const startTime = Date.now();
 
-// Liveness: "is the process up at all". Used by orchestrators (Docker/K8s) to
-// decide whether to restart the container.
-healthRouter.get('/health', (req, res) => {
+healthRouter.get('/health', (_req, res) => {
   res.json({
     status: 'ok',
     uptimeSeconds: Math.floor((Date.now() - startTime) / 1000),
@@ -13,13 +13,21 @@ healthRouter.get('/health', (req, res) => {
   });
 });
 
-// Readiness: "is the app ready to serve real traffic" - i.e. dependencies are up.
-// Right now storage is in-memory so it's always ready; once a real DB is added,
-// this should ping the DB connection and flip to 503 if it's unreachable.
-healthRouter.get('/ready', async (req, res) => {
+healthRouter.get('/ready', async (_req, res) => {
+  const databaseConnected = mongoose.connection.readyState === 1;
+
   const checks = {
-    storage: 'in-memory (ok)',
-    // dbConnection: await checkDb(),  <-- teammate wires this in once DB lands
+    api: 'ok',
+    storage: databaseConnected
+      ? 'MongoDB (connected)'
+      : 'MongoDB (disconnected)',
   };
-  res.json({ status: 'ready', checks, timestamp: new Date().toISOString() });
+
+  const ready = databaseConnected;
+
+  res.status(ready ? 200 : 503).json({
+    status: ready ? 'ready' : 'not_ready',
+    checks,
+    timestamp: new Date().toISOString(),
+  });
 });

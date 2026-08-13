@@ -13,33 +13,26 @@ const AuthContext = createContext(defaultAuthContext);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [accessToken, setAccessToken] = useState(null);
+  const [accessToken, setAccessToken] = useState(() => localStorage.getItem('eintel_access_token'));
+  const [ready, setReady] = useState(false);
 
   const login = async (username, password) => {
     const normalizedUser = (username || '').trim();
     const normalizedPassword = password || '';
 
-    if (normalizedUser === 'admin' && normalizedPassword === 'admin') {
-      const demoUser = { username: normalizedUser, role: 'admin' };
-      setUser(demoUser);
-      setAccessToken('demo-token');
-      localStorage.setItem('eintel_username', normalizedUser);
-      localStorage.setItem('eintel_is_logged_in', 'true');
-      return true;
-    }
-
     try {
       const res = await fetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ username: normalizedUser, password: normalizedPassword })
       });
 
       if (!res.ok) return false;
       const data = await res.json();
       const resolvedUser = data.user || { username: normalizedUser };
-      setAccessToken(data.accessToken || 'demo-token');
+      if (!data.accessToken) return false;
+      localStorage.setItem('eintel_access_token', data.accessToken);
+      setAccessToken(data.accessToken);
       setUser(resolvedUser);
       localStorage.setItem('eintel_username', resolvedUser.username || normalizedUser);
       localStorage.setItem('eintel_is_logged_in', 'true');
@@ -50,19 +43,23 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
-    await fetch('/api/logout', { method: 'POST', credentials: 'include' });
+    await fetch('/api/logout', { method: 'POST', headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {} });
+    localStorage.removeItem('eintel_access_token');
     setUser(null);
     setAccessToken(null);
   };
 
   const refresh = async () => {
-    const res = await fetch('/api/refresh', { method: 'POST', credentials: 'include' });
+    const token = accessToken || localStorage.getItem('eintel_access_token');
+    const res = await fetch('/api/refresh', { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {} });
     if (!res.ok) {
       setUser(null);
       setAccessToken(null);
+      localStorage.removeItem('eintel_access_token');
       return false;
     }
     const data = await res.json();
+    localStorage.setItem('eintel_access_token', data.accessToken);
     setAccessToken(data.accessToken);
     setUser(data.user);
     return true;
@@ -75,6 +72,8 @@ export function AuthProvider({ children }) {
         await refresh();
       } catch (e) {
         // ignore
+      } finally {
+        setReady(true);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -84,12 +83,12 @@ export function AuthProvider({ children }) {
   const authFetch = async (input, init = {}) => {
     init.headers = init.headers || {};
     if (accessToken) init.headers['Authorization'] = `Bearer ${accessToken}`;
-    init.credentials = 'include';
     let resp = await fetch(input, init);
     if (resp.status === 401) {
       const ok = await refresh();
       if (ok) {
-        if (accessToken) init.headers['Authorization'] = `Bearer ${accessToken}`;
+        const refreshedToken = localStorage.getItem('eintel_access_token');
+        if (refreshedToken) init.headers['Authorization'] = `Bearer ${refreshedToken}`;
         resp = await fetch(input, init);
       }
     }
@@ -97,7 +96,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, accessToken, login, logout, refresh, authFetch }}>
+    <AuthContext.Provider value={{ user, accessToken, ready, login, logout, refresh, authFetch }}>
       {children}
     </AuthContext.Provider>
   );

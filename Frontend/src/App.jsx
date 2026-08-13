@@ -19,41 +19,26 @@ import DataMart from './pages/DataMart.jsx';
 import Assistant from './pages/Assistant.jsx';
 import DevReport from './pages/DevReport.jsx';
 import LoginPage from './auth/LoginPage.jsx';
+import { useAuth } from './auth/AuthProvider.jsx';
 
 // Import Floating Widget
 import AssistantWidget from './components/AssistantWidget.jsx';
 
 function App() {
+  const { user, ready, logout } = useAuth();
   const [activePage, setActivePage] = useState('Dashboard');
   const [cart, setCart] = useState([]);
   const [catalog, setCatalog] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [stocks, setStocks] = useState([]);
   const [kpis, setKpis] = useState(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
   
   const [apiStatus, setApiStatus] = useState(false);
   const [lastNotification, setLastNotification] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [currentUser, setCurrentUser] = useState(() => {
-    if (typeof window === 'undefined') return 'Guest';
-    return localStorage.getItem('eintel_username') || 'Guest';
-  });
-
-  const handleLogin = (username) => {
-    const cleanUsername = username || 'Guest';
-    localStorage.setItem('eintel_username', cleanUsername);
-    localStorage.setItem('eintel_is_logged_in', 'true');
-    setCurrentUser(cleanUsername);
-    setIsAuthenticated(true);
-    setActivePage('Dashboard');
-  };
-
-  const handleSignOut = () => {
-    localStorage.removeItem('eintel_username');
-    localStorage.setItem('eintel_is_logged_in', 'false');
-    setCurrentUser('Guest');
-    setIsAuthenticated(false);
+  const handleSignOut = async () => {
+    await logout();
+    setCart([]);
     setActivePage('Dashboard');
   };
 
@@ -174,8 +159,12 @@ function App() {
     }
   };
 
-  if (!isAuthenticated) {
-    return <LoginPage onLogin={handleLogin} />;
+  if (!ready) {
+    return <div className="app-loading"><RefreshCw size={34} className="trend-up spin-icon" /> Restoring session…</div>;
+  }
+
+  if (!user) {
+    return <LoginPage onLogin={() => setActivePage('Dashboard')} />;
   }
 
   return (
@@ -232,7 +221,7 @@ function App() {
         <div className="sidebar-footer">
           <div className="user-info-row">
             <span className="signed-in-label">Signed in as</span>
-            <span className="signed-in-user">{currentUser}</span>
+            <span className="signed-in-user">{user?.name || user?.username || 'Administrator'}</span>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

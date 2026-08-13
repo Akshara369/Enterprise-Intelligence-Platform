@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ArrowUpDown, Search, Filter } from 'lucide-react';
+import { formatCurrency } from '../utils/currency.js';
 
 export default function TransactionGrid({ transactions = [] }) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -151,10 +152,10 @@ export default function TransactionGrid({ transactions = [] }) {
                     {tx.quantity}
                   </td>
                   <td style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>
-                    ${tx.price.toFixed(2)}
+                    {formatCurrency(tx.price)}
                   </td>
                   <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    ${tx.totalPrice.toFixed(2)}
+                    {formatCurrency(tx.totalPrice)}
                   </td>
                 </tr>
               ))}
@@ -167,7 +168,7 @@ export default function TransactionGrid({ transactions = [] }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)', borderTop: '1px solid var(--border-subtle)', paddingTop: '12px' }}>
         <span>Showing {sorted.length} of {transactions.length} ingested records</span>
         {sorted.length > 0 && (
-          <span>Total Ingested Value: <strong>${sorted.reduce((sum, item) => sum + item.totalPrice, 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong></span>
+          <span>Total Ingested Value: <strong>{formatCurrency(sorted.reduce((sum, item) => sum + item.totalPrice, 0))}</strong></span>
         )}
       </div>
     </div>

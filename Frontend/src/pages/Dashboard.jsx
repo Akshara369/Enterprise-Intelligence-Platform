@@ -1,13 +1,9 @@
 import React from 'react';
-import { DollarSign, ShoppingCart, Percent, TrendingUp, ArrowRight } from 'lucide-react';
+import { IndianRupee, ShoppingCart, Percent, TrendingUp, ArrowRight } from 'lucide-react';
 import { AreaChart, BarChart, DonutChart } from '../components/SvgCharts.jsx';
+import { formatCurrency } from '../utils/currency.js';
 
 export default function Dashboard({ kpis, stocks = [], transactions = [], setActivePage }) {
-  // Format numbers to currencies
-  const formatCurrency = (val) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
-  };
-
   const currentTechStock = kpis?.currentStocks?.TECH || 150.00;
   const currentRetailStock = kpis?.currentStocks?.RETL || 80.00;
 
@@ -23,7 +19,7 @@ export default function Dashboard({ kpis, stocks = [], transactions = [], setAct
         <div className="glass-card kpi-card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span className="kpi-label">Total Revenue</span>
-            <DollarSign size={16} className="trend-up" />
+            <IndianRupee size={16} className="trend-up" />
           </div>
           <div className="kpi-value">{formatCurrency(kpis?.totalRevenue)}</div>
           <div className="kpi-trend trend-up">
@@ -64,11 +60,11 @@ export default function Dashboard({ kpis, stocks = [], transactions = [], setAct
           <div style={{ display: 'flex', flexDirection: 'column', marginTop: '4px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
               <span>TECH Ticker:</span>
-              <strong style={{ color: '#00F0FF' }}>${currentTechStock.toFixed(2)}</strong>
+              <strong style={{ color: '#00F0FF' }}>{formatCurrency(currentTechStock)}</strong>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', marginTop: '2px' }}>
               <span>RETL Ticker:</span>
-              <strong style={{ color: '#A020F0' }}>${currentRetailStock.toFixed(2)}</strong>
+              <strong style={{ color: '#A020F0' }}>{formatCurrency(currentRetailStock)}</strong>
             </div>
           </div>
           <div className="kpi-trend" style={{ color: 'var(--text-muted)', fontWeight: 400, marginTop: '2px', fontSize: '0.75rem' }}>
@@ -148,7 +144,7 @@ export default function Dashboard({ kpis, stocks = [], transactions = [], setAct
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontWeight: 700 }}>+${tx.totalPrice.toFixed(2)}</div>
+                    <div style={{ fontWeight: 700 }}>+{formatCurrency(tx.totalPrice)}</div>
                     <span className={`badge ${tx.category === 'Tech' ? 'badge-tech' : 'badge-retail'}`} style={{ fontSize: '0.6rem', padding: '2px 6px', marginTop: '2px' }}>
                       {tx.category} x{tx.quantity}
                     </span>

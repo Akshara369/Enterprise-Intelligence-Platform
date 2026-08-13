@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, ShieldAlert, Lock, Eye, Calendar, DollarSign, TrendingUp } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, Lock, Eye, Calendar, TrendingUp } from 'lucide-react';
+import { formatCurrency } from '../utils/currency.js';
 
 export default function LookAheadValidator({ history = [] }) {
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -174,12 +175,12 @@ export default function LookAheadValidator({ history = [] }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.8rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '6px' }}>
               <span style={{ color: 'var(--text-secondary)' }}>Close Price:</span>
-              <strong className="trend-up">${activeDay.price.toFixed(2)}</strong>
+              <strong className="trend-up">{formatCurrency(activeDay.price)}</strong>
             </div>
             
             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '6px' }}>
               <span style={{ color: 'var(--text-secondary)' }}>Portfolio Equity:</span>
-              <strong className="trend-up">${activeDay.equity.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong>
+              <strong className="trend-up">{formatCurrency(activeDay.equity)}</strong>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '6px' }}>

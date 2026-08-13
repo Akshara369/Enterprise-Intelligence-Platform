@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Bot, Send, ShoppingCart, Sparkles, ShieldCheck } from 'lucide-react';
+import { formatCurrency } from '../utils/currency.js';
 
 export default function Assistant({
   catalog = [],
@@ -49,10 +50,6 @@ export default function Assistant({
       lowStockAlerts: catalog.filter(p => p.inventory < 15).slice(0, 4)
     }));
   }, [cart, kpis, catalog]);
-
-  const formatCurrency = (value) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value || 0);
-  };
 
   const handleActions = async (actions = []) => {
     for (const action of actions) {
@@ -147,7 +144,7 @@ export default function Assistant({
           ...prev,
           {
             sender: 'assistant',
-            text: `🎉 **Checkout Successful!** Order completed for ${count} item(s) totaling **$${total.toFixed(2)}**. Transactions updated in the DataMart in real time!`
+            text: `🎉 **Checkout Successful!** Order completed for ${count} item(s) totaling **${formatCurrency(total)}**. Transactions updated in the DataMart in real time!`
           }
         ]);
         await refreshAllData();
@@ -244,7 +241,7 @@ export default function Assistant({
                   <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{rec.name}</div>
                   <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '4px' }}>{rec.reason}</div>
                   <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <strong>${rec.price?.toFixed(2)}</strong>
+                    <strong>{formatCurrency(rec.price)}</strong>
                     <button
                       className="btn btn-secondary"
                       style={{ padding: '6px 10px', fontSize: '0.75rem' }}
@@ -274,14 +271,14 @@ export default function Assistant({
               cart.map((item) => (
                 <div key={item.product?.id || Math.random()} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
                   <span>{item.product?.name || 'Item'} x{item.quantity}</span>
-                  <strong>${((item.product?.price || 0) * item.quantity).toFixed(2)}</strong>
+                  <strong>{formatCurrency((item.product?.price || 0) * item.quantity)}</strong>
                 </div>
               ))
             )}
           </div>
           <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between' }}>
             <span style={{ color: 'var(--text-secondary)' }}>Total</span>
-            <strong>${cartTotal.toFixed(2)}</strong>
+            <strong>{formatCurrency(cartTotal)}</strong>
           </div>
           <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
             <button 
@@ -294,7 +291,7 @@ export default function Assistant({
               disabled={cart.length === 0 || isTyping} 
               onClick={handleCheckout}
             >
-              {isTyping ? 'Processing...' : `Checkout ${cart.length > 0 ? `($${cartTotal.toFixed(2)})` : ''}`}
+              {isTyping ? 'Processing...' : `Checkout ${cart.length > 0 ? `(${formatCurrency(cartTotal)})` : ''}`}
             </button>
             <button 
               className="btn btn-secondary" 
@@ -318,7 +315,7 @@ export default function Assistant({
               <div className="assistant-mini-row"><span>Revenue</span><strong>{formatCurrency(latestCards.kpiSnapshot.totalRevenue)}</strong></div>
               <div className="assistant-mini-row"><span>Orders</span><strong>{latestCards.kpiSnapshot.totalOrders || 0}</strong></div>
               <div className="assistant-mini-row"><span>Avg Ticket</span><strong>{formatCurrency(latestCards.kpiSnapshot.avgOrderValue)}</strong></div>
-              <div className="assistant-mini-row"><span>TECH / RETL</span><strong>${latestCards.kpiSnapshot.currentStocks?.TECH?.toFixed(2)} / ${latestCards.kpiSnapshot.currentStocks?.RETL?.toFixed(2)}</strong></div>
+              <div className="assistant-mini-row"><span>TECH / RETL</span><strong>{formatCurrency(latestCards.kpiSnapshot.currentStocks?.TECH)} / {formatCurrency(latestCards.kpiSnapshot.currentStocks?.RETL)}</strong></div>
             </div>
           ) : (
             <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>KPI data unavailable.</div>

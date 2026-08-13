@@ -30,10 +30,7 @@ function App() {
   const [transactions, setTransactions] = useState([]);
   const [stocks, setStocks] = useState([]);
   const [kpis, setKpis] = useState(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return localStorage.getItem('eintel_is_logged_in') === 'true';
-  });
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   
   const [apiStatus, setApiStatus] = useState(false);
   const [lastNotification, setLastNotification] = useState(null);

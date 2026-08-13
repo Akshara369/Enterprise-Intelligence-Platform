@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { formatCompactCurrency } from '../utils/currency.js';
 
 // ==========================================
 // 1. AREA CHART (Raw SVG with Gradient Fill)
@@ -342,7 +343,7 @@ export function DonutChart({ techValue = 50, retailValue = 50, height = 180 }) {
 
         {/* Center label */}
         <text x="65" y="62" fill="var(--text-primary)" fontSize="18" fontWeight="800" textAnchor="middle" fontFamily="var(--font-family-display)">
-          {total > 1000 ? `$${(total/1000).toFixed(0)}k` : `$${total.toFixed(0)}`}
+          {formatCompactCurrency(total)}
         </text>
         <text x="65" y="78" fill="var(--text-secondary)" fontSize="8" fontWeight="600" textAnchor="middle" letterSpacing="0.05em">
           SALES VOLUME

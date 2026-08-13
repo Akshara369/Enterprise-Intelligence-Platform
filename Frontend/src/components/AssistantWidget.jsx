@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Bot, X, Send, ShoppingBag } from 'lucide-react';
+import { formatCurrency } from '../utils/currency.js';
 
 export default function AssistantWidget({ catalog = [], kpis = null, cart = [], addToCart, clearCart, checkoutCart, placeDirectPurchase, setActivePage }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -41,10 +42,6 @@ export default function AssistantWidget({ catalog = [], kpis = null, cart = [], 
       lowStockAlerts: catalog.filter(p => p.inventory < 15).slice(0, 2)
     }));
   }, [cart, kpis, catalog]);
-
-  const formatCurrency = (value) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value || 0);
-  };
 
   const handleSend = async (textToSend) => {
     const text = textToSend || query;
@@ -174,7 +171,7 @@ export default function AssistantWidget({ catalog = [], kpis = null, cart = [], 
                     {latestCards.recommendations.map((rec) => (
                       <div key={rec.id} className="assistant-widget-row">
                         <span>{rec.name}</span>
-                        <strong>${rec.price?.toFixed(2)}</strong>
+                        <strong>{formatCurrency(rec.price)}</strong>
                       </div>
                     ))}
                   </div>

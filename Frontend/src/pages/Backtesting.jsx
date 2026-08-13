@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Play, TrendingUp, Info, DollarSign, Award, Percent } from 'lucide-react';
+import { Play, TrendingUp, Info, IndianRupee, Award, Percent } from 'lucide-react';
 import LookAheadValidator from '../components/LookAheadValidator.jsx';
+import { formatCurrency } from '../utils/currency.js';
 
 export default function Backtesting({ stocks = [] }) {
   const [strategyName, setStrategyName] = useState('transactionMomentum');
@@ -106,11 +107,11 @@ export default function Backtesting({ stocks = [] }) {
             />
             {/* Left Y-axis labels (Equity) */}
             <text x={padding.left - 8} y={line.y + 3} fill="#00F0FF" fontSize="8" textAnchor="end" fontWeight="500">
-              ${line.eqVal.toFixed(0)}
+              ₹{line.eqVal.toFixed(0)}
             </text>
             {/* Right Y-axis labels (Price) */}
             <text x={width - padding.right + 8} y={line.y + 3} fill="#A020F0" fontSize="8" textAnchor="start" fontWeight="500">
-              ${line.prVal.toFixed(1)}
+              ₹{line.prVal.toFixed(1)}
             </text>
           </g>
         ))}
@@ -169,7 +170,7 @@ export default function Backtesting({ stocks = [] }) {
 
           {/* Initial Capital */}
           <div className="input-group" style={{ margin: 0, minWidth: '120px' }}>
-            <label>Starting Capital (USD)</label>
+            <label>Starting Capital (INR)</label>
             <input 
               type="number" 
               value={initialCapital} 
@@ -243,13 +244,13 @@ export default function Backtesting({ stocks = [] }) {
             <div className="glass-card kpi-card">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span className="kpi-label">Final Portfolio Value</span>
-                <DollarSign size={16} className="trend-up" />
+                <IndianRupee size={16} className="trend-up" />
               </div>
               <div className="kpi-value">
-                ${backtestResult.finalValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                {formatCurrency(backtestResult.finalValue)}
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                Cash: ${backtestResult.history[backtestResult.history.length-1].cash.toFixed(2)} &bull; Shares: {backtestResult.history[backtestResult.history.length-1].shares}
+                Cash: {formatCurrency(backtestResult.history[backtestResult.history.length-1].cash)} &bull; Shares: {backtestResult.history[backtestResult.history.length-1].shares}
               </div>
             </div>
           </div>

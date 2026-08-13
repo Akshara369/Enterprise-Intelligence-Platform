@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldAlert, Lightbulb, TrendingUp, Sparkles, RefreshCw } from 'lucide-react';
 import TransactionGrid from '../components/TransactionGrid.jsx';
+import { formatCurrency } from '../utils/currency.js';
 
 export default function DataMart({ transactions = [] }) {
   const [catalog, setCatalog] = useState([]);
@@ -98,10 +99,6 @@ export default function DataMart({ transactions = [] }) {
 
     setInsights(rules);
   }, [transactions, catalog]);
-
-  const formatCurrency = (val) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
-  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>

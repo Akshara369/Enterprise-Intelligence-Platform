@@ -131,7 +131,51 @@ export default function Assistant({
     'Buy 1 Barista Brewer Pro'
   ];
 
-  const cartTotal = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+  const cartTotal = cart.reduce((sum, item) => sum + (item.product?.price || 0) * item.quantity, 0);
+
+  const handleCheckout = async () => {
+    if (cart.length === 0 || isTyping) return;
+    const count = cart.length;
+    const total = cartTotal;
+    setMessages(prev => [...prev, { sender: 'user', text: 'Checkout my cart' }]);
+    setIsTyping(true);
+
+    try {
+      const success = await checkoutCart();
+      if (success) {
+        setMessages(prev => [
+          ...prev,
+          {
+            sender: 'assistant',
+            text: `🎉 **Checkout Successful!** Order completed for ${count} item(s) totaling **$${total.toFixed(2)}**. Transactions updated in the DataMart in real time!`
+          }
+        ]);
+        await refreshAllData();
+      } else {
+        setMessages(prev => [
+          ...prev,
+          { sender: 'assistant', text: 'Checkout failed. Please check inventory levels.' }
+        ]);
+      }
+    } catch (e) {
+      setMessages(prev => [
+        ...prev,
+        { sender: 'assistant', text: 'Checkout failed due to connection issue.' }
+      ]);
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
+  const handleClear = () => {
+    if (cart.length === 0) return;
+    clearCart();
+    setMessages(prev => [
+      ...prev,
+      { sender: 'user', text: 'Clear my cart' },
+      { sender: 'assistant', text: '🛒 Shopping cart cleared. Ready to start fresh!' }
+    ]);
+  };
 
   return (
     <div className="assistant-page-grid">
@@ -228,9 +272,9 @@ export default function Assistant({
               <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>No items in cart yet.</div>
             ) : (
               cart.map((item) => (
-                <div key={item.product.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                  <span>{item.product.name} x{item.quantity}</span>
-                  <strong>${(item.product.price * item.quantity).toFixed(2)}</strong>
+                <div key={item.product?.id || Math.random()} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                  <span>{item.product?.name || 'Item'} x{item.quantity}</span>
+                  <strong>${((item.product?.price || 0) * item.quantity).toFixed(2)}</strong>
                 </div>
               ))
             )}
@@ -240,8 +284,30 @@ export default function Assistant({
             <strong>${cartTotal.toFixed(2)}</strong>
           </div>
           <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
-            <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => checkoutCart()}>Checkout</button>
-            <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => clearCart()}>Clear</button>
+            <button 
+              className="btn btn-primary" 
+              style={{ 
+                flex: 1, 
+                opacity: cart.length === 0 || isTyping ? 0.5 : 1, 
+                cursor: cart.length === 0 || isTyping ? 'not-allowed' : 'pointer' 
+              }} 
+              disabled={cart.length === 0 || isTyping} 
+              onClick={handleCheckout}
+            >
+              {isTyping ? 'Processing...' : `Checkout ${cart.length > 0 ? `($${cartTotal.toFixed(2)})` : ''}`}
+            </button>
+            <button 
+              className="btn btn-secondary" 
+              style={{ 
+                flex: 1, 
+                opacity: cart.length === 0 || isTyping ? 0.5 : 1, 
+                cursor: cart.length === 0 || isTyping ? 'not-allowed' : 'pointer' 
+              }} 
+              disabled={cart.length === 0 || isTyping} 
+              onClick={handleClear}
+            >
+              Clear
+            </button>
           </div>
         </div>
 

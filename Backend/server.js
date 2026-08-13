@@ -201,6 +201,7 @@ async function parseAssistantQuery(query, cart = []) {
   const lower = query.toLowerCase().trim();
   let textResponse = '';
   let actions = [];
+  const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   const catalog = await Product.find({});
   const transactions = await Transaction.find({}).sort({ timestamp: -1 });
@@ -214,7 +215,7 @@ async function parseAssistantQuery(query, cart = []) {
   // Catalog queries
   if (lower.match(/\b(catalog|products|items|available|sell|store|shop|buy)\b/) && !lower.match(/\b(buy|add)\b/)) {
     textResponse = "Here are the hot items currently available in our retail catalog. You can ask me to add any of them to your shopping cart:\n\n" + 
-      catalog.map(p => `• **${p.name}** (${p.category}) - $${p.price} | Stock: ${p.inventory} left`).join('\n');
+      catalog.map(p => `• **${p.name}** (${p.category}) - ${formatCurrency(p.price)} | Stock: ${p.inventory} left`).join('\n');
     actions.push({ type: 'SHOW_CATALOG' });
     return { textResponse, actions };
   }
@@ -226,10 +227,10 @@ async function parseAssistantQuery(query, cart = []) {
     const retailSales = transactions.filter(t => t.category === 'Retail').reduce((sum, tx) => sum + tx.totalPrice, 0);
     
     textResponse = `📊 **Real-time DataMart Financial Summary:**\n\n` + 
-      `• **Total Platform Revenue:** $${totalRevenue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}\n` +
+      `• **Total Platform Revenue:** ${formatCurrency(totalRevenue)}\n` +
       `• **Total Orders Processed:** ${transactions.length}\n` +
-      `• **Tech Category Sales:** $${techSales.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}\n` +
-      `• **Retail Category Sales:** $${retailSales.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}\n\n` +
+      `• **Tech Category Sales:** ${formatCurrency(techSales)}\n` +
+      `• **Retail Category Sales:** ${formatCurrency(retailSales)}\n\n` +
       `Our trading signal reflects this volume. Would you like me to open the backtesting panel to check market returns?`;
     actions.push({ type: 'SHOW_KPIS', data: { totalRevenue, count: transactions.length } });
     return { textResponse, actions };
@@ -263,8 +264,8 @@ async function parseAssistantQuery(query, cart = []) {
     } else {
       const cartTotal = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
       textResponse = `🛒 **Your Current Shopping Cart:**\n\n` +
-        cart.map(item => `• **${item.product.name}** x ${item.quantity} - $${(item.product.price * item.quantity).toFixed(2)}`).join('\n') +
-        `\n\n**Subtotal:** $${cartTotal.toFixed(2)}\n\nWould you like me to checkout? (Type: *'checkout'*)`;
+        cart.map(item => `• **${item.product.name}** x ${item.quantity} - ${formatCurrency(item.product.price * item.quantity)}`).join('\n') +
+        `\n\n**Subtotal:** ${formatCurrency(cartTotal)}\n\nWould you like me to checkout? (Type: *'checkout'*)`;
     }
     actions.push({ type: 'SHOW_CART' });
     return { textResponse, actions };
@@ -272,7 +273,7 @@ async function parseAssistantQuery(query, cart = []) {
 
   // Recommendations / gift / budget intent
   if (lower.match(/\b(recommend|suggest|gift|budget|under|below|cheap|best)\b/)) {
-    const budgetMatch = lower.match(/(?:under|below)\s*\$?\s*(\d+)/) || lower.match(/\$\s*(\d+)/);
+    const budgetMatch = lower.match(/(?:under|below)\s*[₹$]?\s*(\d+)/) || lower.match(/[₹$]\s*(\d+)/);
     const budget = budgetMatch ? parseFloat(budgetMatch[1]) : 150;
 
     let categoryHint = null;
@@ -303,15 +304,15 @@ async function parseAssistantQuery(query, cart = []) {
       .slice(0, 3);
 
     if (recommended.length === 0) {
-      textResponse = `I could not find products under $${budget.toFixed(0)} right now. Try increasing your budget or ask me to show the full catalog.`;
+      textResponse = `I could not find products under ${formatCurrency(budget)} right now. Try increasing your budget or ask me to show the full catalog.`;
       actions.push({ type: 'SHOW_CATALOG' });
       return { textResponse, actions };
     }
 
     const qualifier = categoryHint ? ` in ${categoryHint}` : '';
-    textResponse = `Great choice. Here are my recommendations${qualifier} under $${budget.toFixed(0)}:\n\n` +
+    textResponse = `Great choice. Here are my recommendations${qualifier} under ${formatCurrency(budget)}:\n\n` +
       recommended
-        .map((p, idx) => `${idx + 1}. **${p.name}** (${p.category}) - $${p.price.toFixed(2)} | Rating: ${p.rating}/5 | Stock: ${p.inventory}`)
+        .map((p, idx) => `${idx + 1}. **${p.name}** (${p.category}) - ${formatCurrency(p.price)} | Rating: ${p.rating}/5 | Stock: ${p.inventory}`)
         .join('\n') +
       `\n\nYou can say: *Add 1 ${recommended[0].name} to cart*.`;
 
@@ -355,7 +356,7 @@ async function parseAssistantQuery(query, cart = []) {
             product: matchedProduct,
             quantity: qty
           });
-          textResponse = `🎉 **Order Successful!** You bought **${qty}x ${matchedProduct.name}** for a total of **$${(matchedProduct.price * qty).toFixed(2)}**.\n\nTransactions are updated in the DataMart in real time! Go check the ledger, and see if it triggers buying signals in our backtesting charts.`;
+          textResponse = `🎉 **Order Successful!** You bought **${qty}x ${matchedProduct.name}** for a total of **${formatCurrency(matchedProduct.price * qty)}**.\n\nTransactions are updated in the DataMart in real time! Go check the ledger, and see if it triggers buying signals in our backtesting charts.`;
         } else {
           actions.push({
             type: 'ADD_TO_CART',

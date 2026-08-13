@@ -8,11 +8,7 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-<<<<<<< HEAD
-        target: 'http://localhost:5000',
-=======
         target: 'http://localhost:5001',
->>>>>>> kairavi
         changeOrigin: true,
         secure: false
       }

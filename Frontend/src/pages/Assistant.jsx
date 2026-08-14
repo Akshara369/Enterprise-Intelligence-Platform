@@ -299,10 +299,10 @@ await refreshAllData();
           fontSize: '0.8rem'
         }}
       >
-        <span>⭐ {rec.rating ?? 'N/A'}</span>
+        <span>⭐ {rec.rating ?? product?.rating ?? product?.name}</span>
 
-        <span>
-          📦 {rec.inventory ?? 0} in stock
+        <span style={{ color: (rec.inventory ?? 0) <= 2 && (rec.inventory ?? 0) > 0 ? '#ef4444' : 'inherit', fontWeight: (rec.inventory ?? 0) <= 2 && (rec.inventory ?? 0) > 0 ? 600 : 400 }}>
+          📦 {rec.inventory ?? 0} in stock {(rec.inventory ?? 0) <= 2 && (rec.inventory ?? 0) > 0 ? '⚠️ Low Stock' : ''}
         </span>
       </div>
 

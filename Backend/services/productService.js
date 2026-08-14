@@ -98,7 +98,7 @@ export async function recommendProducts({
     category,
     maxPrice,
     minRating,
-    inStock: true,
+    inStock: false,
     limit: 50
   });
 

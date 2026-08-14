@@ -623,7 +623,7 @@ app.get('/api/stocks', async (req, res) => {
 });
 
 async function runRetailAssistant(query, cart = []) {
-  const text = query.toLowerCase();
+  const text = query.replace(/["']/g, '').trim().toLowerCase();
   // --------------------------------
 // DATAMART / KPI INTENT
 // --------------------------------
@@ -930,8 +930,37 @@ if (
     category = 'Retail';
   }
   // --------------------------------
-// INVENTORY INTENT
-// --------------------------------
+  // CATALOG INTENT
+  // --------------------------------
+
+  const catalogIntent =
+    text.includes('catalog') ||
+    text.includes('show all products') ||
+    text.includes('list products') ||
+    text.includes('browse products') ||
+    text === 'show catalog' ||
+    text === 'products';
+
+  if (catalogIntent) {
+    const products = await searchProducts({
+      limit: 10
+    });
+
+    return {
+      type: 'catalog',
+      message: `Here is our full product catalog containing ${products.length} items.`,
+      products,
+      actions: [
+        {
+          type: 'SHOW_CATALOG'
+        }
+      ]
+    };
+  }
+
+  // --------------------------------
+  // INVENTORY INTENT
+  // --------------------------------
 
 const inventoryIntent =
   text.includes('in stock') ||
@@ -1066,7 +1095,7 @@ if (detailsIntent) {
 
     category,
     maxPrice,
-    inStock: true,
+    inStock: false,
     limit: 10
   });
 

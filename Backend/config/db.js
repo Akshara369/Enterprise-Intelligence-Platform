@@ -13,7 +13,12 @@ export const INITIAL_CATALOG = [
   { id: 'prod_3', name: 'AcousticANC Headphones', category: 'Tech', price: 299.99, inventory: 80, rating: 4.5 },
   { id: 'prod_4', name: 'Apex Running Shoes', category: 'Retail', price: 129.99, inventory: 120, rating: 4.4 },
   { id: 'prod_5', name: 'Barista Brewer Pro', category: 'Retail', price: 199.99, inventory: 35, rating: 4.6 },
-  { id: 'prod_6', name: 'HydroSport Smart Bottle', category: 'Retail', price: 49.99, inventory: 150, rating: 4.2 }
+  { id: 'prod_6', name: 'HydroSport Smart Bottle', category: 'Retail', price: 49.99, inventory: 150, rating: 4.2 },
+  { id: 'prod_7', name: 'Wireless Ergonomic Mouse', category: 'Tech', price: 39.99, inventory: 0, rating: 4.1 },
+  { id: 'prod_8', name: 'UltraFit Smartwatch X', category: 'Tech', price: 199.99, inventory: 0, rating: 4.3 },
+  { id: 'prod_9', name: 'Organic Cotton Hoodie', category: 'Retail', price: 59.99, inventory: 0, rating: 4.0 },
+  { id: 'prod_10', name: 'Compact Mechanical Keyboard', category: 'Tech', price: 89.99, inventory: 1, rating: 4.6 },
+  { id: 'prod_11', name: 'Eco-Friendly Travel Mug', category: 'Retail', price: 24.99, inventory: 2, rating: 4.3 }
 ];
 
 export function generateSeedData() {
@@ -85,15 +90,15 @@ export function generateSeedData() {
 
 export async function seedDatabase() {
   try {
-    const productCount = await Product.countDocuments();
-    if (productCount === 0) {
-      console.log('Seeding MongoDB database with initial catalog, transactions, and stock history...');
+    for (const item of INITIAL_CATALOG) {
+      await Product.updateOne({ id: item.id }, { $set: item }, { upsert: true });
+    }
+    const txCount = await Transaction.countDocuments();
+    if (txCount === 0) {
+      console.log('Seeding MongoDB transactions & stock history...');
       const seed = generateSeedData();
-      
-      await Product.insertMany(seed.catalog);
       await Transaction.insertMany(seed.transactions);
       await StockHistory.insertMany(seed.stocksHistoricalData);
-
       console.log('MongoDB seeding complete!');
     }
   } catch (error) {

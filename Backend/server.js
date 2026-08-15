@@ -1398,11 +1398,6 @@ app.get('/api/developer-report', requireAdmin, async (_req, res, next) => {
         detail: `${stocks.length} historical price records`,
       },
       {
-        name: 'RAG',
-        status: 'Degraded',
-        detail: 'Not configured',
-      },
-      {
         name: 'Product / Inventory',
         status: services[1].status,
         detail: `${products.length} products, ${lowStockProducts} low stock`,

@@ -37,6 +37,15 @@ const DEMO_USER = Object.freeze({ id: 'user_admin', username: 'admin', password:
 const authTokens = new Map();
 const assistantSessions = new Map();
 const assistantMetrics = { totalRequests: 0, ruleEngineResponses: 0, actionCalls: 0, lastRequestAt: null };
+const assistantToolsByType = {
+  recommendations: 'recommendProducts',
+  inventory: 'checkInventory',
+  product_details: 'getProductDetails',
+  cart_action: 'Cart',
+  cart_status: 'Cart',
+  catalog: 'searchProducts',
+  product_search: 'searchProducts',
+};
 
 function publicUser(user) { return { id: user.id, username: user.username, name: user.name, role: user.role }; }
 function getAuthToken(req) { return req.headers.authorization?.replace(/^Bearer\s+/i, ''); }
@@ -58,6 +67,10 @@ async function probeService(name, path, check) {
   } catch (error) {
     return { name, path, status: 'Down', httpStatus: 503, latencyMs: Math.round(performance.now() - startedAt), detail: error.message };
   }
+}
+function getAssistantTool(resultType = '') {
+  if (resultType.startsWith('datamart')) return 'DataMart';
+  return assistantToolsByType[resultType] || 'searchProducts';
 }
 
 app.use(cors({ origin: config.corsOrigin || '*' }));
@@ -622,6 +635,77 @@ app.get('/api/stocks', async (req, res) => {
   }
 });
 
+function compactAssistantResult(result) {
+  return {
+    type: result.type,
+    message: result.message,
+    products: (result.products || []).slice(0, 5).map((product) => ({
+      id: product.id,
+      name: product.name || product.productName,
+      category: product.category,
+      price: product.price,
+      inventory: product.inventory,
+      rating: product.rating,
+      revenue: product.revenue,
+      unitsSold: product.unitsSold,
+    })),
+    cartTotal: result.cartTotal,
+    kpis: result.kpis,
+    inventory: result.inventory,
+    actionTypes: (result.actions || []).map((action) => action.type),
+  };
+}
+
+async function askOllama(query, result) {
+  if (!config.ollama.enabled) {
+    return null;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), config.ollama.timeoutMs);
+
+  try {
+    const response = await fetch(`${config.ollama.url.replace(/\/$/, '')}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: config.ollama.model,
+        stream: false,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are a concise retail operations assistant inside an enterprise intelligence dashboard. ' +
+              'Use only the supplied tool result as factual context. Do not invent product names, prices, inventory, KPIs, or actions. ' +
+              'If the tool result includes cart or checkout actions, acknowledge them exactly as already decided. ' +
+              'Keep the answer under 90 words and make it useful for a business user.',
+          },
+          {
+            role: 'user',
+            content: JSON.stringify({
+              userQuery: query,
+              toolResult: compactAssistantResult(result),
+            }),
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Ollama responded with ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data?.message?.content?.trim() || null;
+  } catch (error) {
+    logger.warn({ err: error }, 'Ollama assistant enhancement unavailable; using rule engine response');
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function runRetailAssistant(query, cart = []) {
   const text = query.replace(/["']/g, '').trim().toLowerCase();
   // --------------------------------
@@ -1130,6 +1214,8 @@ app.post('/api/assistant', async (req, res) => {
     }
 
     const result = await runRetailAssistant(query, cart);
+    const aiMessage = await askOllama(query, result);
+    const llmEnabled = Boolean(aiMessage);
 
     assistantMetrics.totalRequests += 1;
     assistantMetrics.ruleEngineResponses += 1;
@@ -1140,24 +1226,15 @@ app.post('/api/assistant', async (req, res) => {
 
     res.json({
       ...result,
+      message: aiMessage || result.message,
+      textResponse: aiMessage || result.message,
 
       meta: {
-        mode: 'local_tool_engine',
-        llmEnabled: false,
-        toolsUsed: [
-  result.type === 'recommendations'
-    ? 'recommendProducts'
-    : result.type === 'inventory'
-      ? 'checkInventory'
-      : result.type === 'product_details'
-        ? 'getProductDetails'
-        : result.type.startsWith('datamart')
-          ? 'DataMart'
-          : result.type === 'cart_action'
-            ? 'Cart'
-            : 'searchProducts'
-]
-        
+        mode: llmEnabled ? 'llm' : 'local_tool_engine',
+        llmEnabled,
+        llmProvider: llmEnabled ? 'ollama' : null,
+        model: llmEnabled ? config.ollama.model : null,
+        toolsUsed: [getAssistantTool(result.type)]
       }
     });
 
@@ -1445,8 +1522,8 @@ app.get('/api/developer-report', requireAdmin, async (_req, res, next) => {
       modules,
 
       assistant: {
-        mode: process.env.OPENAI_API_KEY
-          ? 'rule_engine_with_ai_key_configured'
+        mode: config.ollama.enabled
+          ? 'rule_engine_with_ollama'
           : 'rule_engine',
 
         model:
@@ -1454,7 +1531,13 @@ app.get('/api/developer-report', requireAdmin, async (_req, res, next) => {
           'Local Tool Engine',
 
         apiKeyConfigured:
-          Boolean(process.env.OPENAI_API_KEY),
+          false,
+
+        ollamaEnabled:
+          config.ollama.enabled,
+
+        ollamaUrl:
+          config.ollama.url,
 
         guardrailLimit:
           `${config.rateLimit.max} requests / ${Math.round(

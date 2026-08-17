@@ -1174,7 +1174,7 @@ app.get('/api/assistant/health', (_req, res) => {
   res.json({
     status: 'Healthy',
     mode: process.env.OPENAI_API_KEY ? 'rule_engine_with_ai_key_configured' : 'rule_engine',
-    model: process.env.OPENAI_MODEL || 'Not configured',
+    model: process.env.OPENAI_MODEL || 'Local Tool Engine',
     apiKeyConfigured: Boolean(process.env.OPENAI_API_KEY),
     guardrailLimit: `${config.rateLimit.max} requests / ${Math.round(config.rateLimit.windowMs / 60000)} minute`,
     activeSessions: assistantSessions.size,
@@ -1398,11 +1398,6 @@ app.get('/api/developer-report', requireAdmin, async (_req, res, next) => {
         detail: `${stocks.length} historical price records`,
       },
       {
-        name: 'RAG',
-        status: 'Degraded',
-        detail: 'Not configured',
-      },
-      {
         name: 'Product / Inventory',
         status: services[1].status,
         detail: `${products.length} products, ${lowStockProducts} low stock`,
@@ -1456,7 +1451,7 @@ app.get('/api/developer-report', requireAdmin, async (_req, res, next) => {
 
         model:
           process.env.OPENAI_MODEL ||
-          'Not configured',
+          'Local Tool Engine',
 
         apiKeyConfigured:
           Boolean(process.env.OPENAI_API_KEY),
